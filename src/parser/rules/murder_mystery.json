@@ -1,0 +1,33 @@
+{
+  "id": "murder_mystery",
+  "name": "Global Murder Mystery",
+  "description": "Game-state and result signal rules for murder_mystery.",
+  "cleaners": [
+    {
+      "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "murder_mystery_mode",
+      "type": "game_mode",
+      "pattern": "^(?:Murder Mystery|密室杀手|谋杀之谜)\\b.*$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "murder_mystery"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 110
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "id": "blitz_sg",
+  "name": "Global Blitz SG",
+  "description": "Game-state and result signal rules for blitz_sg.",
+  "cleaners": [
+    {
+      "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "blitz_sg_mode",
+      "type": "game_mode",
+      "pattern": "^(?:Blitz Survival Games|闪电饥饿游戏)$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "blitz_sg"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 78
+    },
+    {
+      "id": "blitz_sg_star_release",
+      "type": "game_mode",
+      "pattern": "^The Blitz Star will be released in (?<minutes>\\d+) minutes?!$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "blitz_sg"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 80
+    }
+  ]
+}

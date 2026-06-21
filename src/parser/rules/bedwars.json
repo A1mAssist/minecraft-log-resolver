@@ -1,0 +1,336 @@
+{
+  "id": "bedwars",
+  "name": "Global BedWars",
+  "description": "Cross-server BedWars chat event rules, including BedWars-specific game state/result signals.",
+  "cleaners": [
+    {
+      "pattern": "^[\\s\\[]*花雨庭\\]?\\s*",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?!\\[(?:\\u961f\\u4f0d|\\u5168\\u90e8)\\])\\[[^\\]]+\\]\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "zh_bedwars_win_reward",
+      "type": "win",
+      "pattern": "^\\+?\\d+\\s*起床战争经验（获胜额外奖励）$",
+      "payload": {
+        "gameMode": "bedwars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 32,
+      "cleaners": [
+        {
+          "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+          "flags": "i",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+          "replacement": ""
+        }
+      ]
+    },
+    {
+      "id": "zh_bedwars_experience_reward",
+      "type": "game_mode",
+      "pattern": "^\\+?\\d+\\s*起床战争经验[!！]?(?:（[^）]+）)?$",
+      "payload": {
+        "gameMode": "bedwars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 39,
+      "cleaners": [
+        {
+          "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+          "flags": "i",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+          "replacement": ""
+        }
+      ]
+    },
+    {
+      "id": "zh_bedwars_bracket_experience_reward",
+      "type": "game_mode",
+      "pattern": "^\\[起床战争\\]\\s*\\+\\s*\\d+\\s*经验[!！]?(?:（[^）]+）)?$",
+      "payload": {
+        "gameMode": "bedwars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 40,
+      "cleaners": [
+        {
+          "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+          "flags": "i",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+          "replacement": ""
+        }
+      ]
+    },
+    {
+      "id": "zh_hyt_map_rating_prompt",
+      "type": "round_end",
+      "pattern": "^你好(?<player>.+?)\\s+请为游戏地图《(?<map>.+?)》进行点评。$",
+      "payload": {
+        "gameMode": "bedwars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 56,
+      "cleaners": [
+        {
+          "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+          "flags": "i",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+          "replacement": ""
+        }
+      ]
+    },
+    {
+      "id": "zh_bedwars_team_win",
+      "type": "round_end",
+      "pattern": "^起床战争\\s*>>?\\s*恭喜\\s*[!！]\\s*(?<winner>.+?)(?:之队队|之队|队)?\\s*获得胜利[!！]?$",
+      "payload": {
+        "gameMode": "bedwars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 57,
+      "cleaners": [
+        {
+          "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+          "flags": "i",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+          "replacement": ""
+        }
+      ]
+    },
+    {
+      "id": "bedwars_mode",
+      "type": "game_mode",
+      "pattern": "^(?:Bed\\s*Wars?\\b.*|起床战争)$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "bedwars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 86,
+      "cleaners": [
+        {
+          "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+          "flags": "i",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+          "replacement": ""
+        }
+      ]
+    },
+    {
+      "id": "hypixel_bedwars_objective",
+      "type": "game_mode",
+      "pattern": "^保护你的床并摧毁敌人的床。收集铁锭，金锭，绿宝石和钻石.*$",
+      "payload": {
+        "gameMode": "bedwars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 87,
+      "cleaners": [
+        {
+          "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+          "flags": "i",
+          "replacement": ""
+        },
+        {
+          "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+          "replacement": ""
+        }
+      ]
+    },
+    {
+      "id": "zh_countdown",
+      "type": "round_countdown",
+      "pattern": "^起床战争\\s*>>?\\s*游戏将在\\s*(?<seconds>\\d+)\\s*秒后开始!?$"
+    },
+    {
+      "id": "zh_countdown_plain",
+      "type": "round_countdown",
+      "pattern": "^开始倒计时:\\s*(?<seconds>\\d+)\\s*秒$"
+    },
+    {
+      "id": "en_countdown",
+      "type": "round_countdown",
+      "pattern": "^The game starts in (?<seconds>\\d+) seconds?!$"
+    },
+    {
+      "id": "zh_round_start",
+      "type": "round_start",
+      "pattern": "^起床战争\\s*>>?\\s*游戏开始\\s*\\.*$"
+    },
+    {
+      "id": "zh_round_start_named",
+      "type": "round_start",
+      "pattern": "^起床战争\\s*>>?\\s*游戏\\s+'(?<map>.+?)'\\s*(?:刚刚|正式)?开始!?$"
+    },
+    {
+      "id": "zh_player_join",
+      "type": "player_join",
+      "pattern": "^起床战争\\s*>>?\\s*(?<player>.+?)\\s+加入了游戏!$"
+    },
+    {
+      "id": "zh_player_leave",
+      "type": "player_leave",
+      "pattern": "^(?:起床战争\\s*>>?\\s*)?(?:玩家\\s*)?(?<player>.+?)(?:\\s*\\([^)]+\\))?\\s+离开了游戏!$"
+    },
+    {
+      "id": "zh_player_quit",
+      "type": "player_leave",
+      "pattern": "^(?:起床战争\\s*>>?\\s*)?(?<player>.+?)\\s+退出了游戏!$"
+    },
+    {
+      "id": "zh_team_channel_chat",
+      "type": "team_chat",
+      "pattern": "^\\[\\u961f\\u4f0d\\]\\s*<(?<team>[^>]+)>\\s*(?<player>[^:：]+)\\s*[:：]\\s*(?<message>.+)$",
+      "payload": {
+        "chatScope": "team"
+      }
+    },
+    {
+      "id": "zh_all_channel_chat",
+      "type": "team_chat",
+      "pattern": "^\\[\\u5168\\u90e8\\]\\s*<(?<team>[^>]+)>\\s*(?<player>[^:：]+)\\s*[:：]\\s*(?<message>.+)$",
+      "payload": {
+        "chatScope": "all"
+      }
+    },
+    {
+      "id": "zh_team_chat",
+      "type": "team_chat",
+      "pattern": "^<(?<team>[^>]+)>\\s*(?<player>[^:：]+)\\s*[:：]\\s*(?<message>.+)$"
+    },
+    {
+      "id": "en_hypixel_team_chat",
+      "type": "team_chat",
+      "pattern": "^(?:\\[[^\\]]+\\]\\s*)?\\[(?<team>RED|BLUE|GREEN|YELLOW|AQUA|WHITE|PINK|GRAY|GREY)\\]\\s+(?:\\[[^\\]]+\\]\\s*)*(?<player>[A-Za-z0-9_]{1,16})\\s*:\\s*(?<message>.+)$"
+    },
+    {
+      "id": "zh_kill_team",
+      "type": "kill",
+      "pattern": "^起床战争\\s*>>?\\s*(?<killer>.+?)(?:\\[[^\\]]+\\])?\\s*\\((?<killerTeam>[^)]+)\\)\\s*杀死了\\s*(?<victim>.+?)\\s*\\((?<victimTeam>[^)]+)\\)!?$"
+    },
+    {
+      "id": "zh_final_destroy",
+      "type": "kill",
+      "pattern": "^(?<victim>.+?)\\s+被\\s+(?<killer>.+?)\\s+彻底摧毁$",
+      "payload": {
+        "finalDeath": true
+      }
+    },
+    {
+      "id": "zh_void_assist",
+      "type": "kill",
+      "pattern": "^(?<victim>.+?)\\s+被虚空带走了\\s+在\\s+(?<killer>.+?)\\s+的帮助下$"
+    },
+    {
+      "id": "en_final_kill_by",
+      "type": "kill",
+      "pattern": "^(?<victim>.+?) was (?<method>.+?) by (?<killer>.+?)\\. FINAL KILL!?$",
+      "payload": {
+        "finalDeath": true
+      }
+    },
+    {
+      "id": "en_kill_by",
+      "type": "kill",
+      "pattern": "^(?<victim>.+?) was (?<method>.+?) by (?<killer>.+?)(?:\\. FINAL KILL!)?\\.$"
+    },
+    {
+      "id": "zh_void_death",
+      "type": "death",
+      "pattern": "^(?<victim>.+?)\\s+被虚空带走了!$"
+    },
+    {
+      "id": "zh_death_team",
+      "type": "death",
+      "pattern": "^起床战争\\s*>>?\\s*(?<victim>.+?)\\s*\\((?<victimTeam>[^)]+)\\)\\s*死了!$"
+    },
+    {
+      "id": "en_bedwars_death",
+      "type": "death",
+      "pattern": "^(?<victim>.+?) (?:fell into the void|died|was knocked into the void|was thrown into the void)\\.$"
+    },
+    {
+      "id": "zh_bed_destroy",
+      "type": "bed_destroy",
+      "pattern": "^起床战争\\s*>>?\\s*(?<player>.+?)\\s*\\([^)]+\\)\\s*破坏了\\s*(?<team>.+?)\\s*的床[!！]?$"
+    },
+    {
+      "id": "zh_bed_destroyed",
+      "type": "bed_destroy",
+      "pattern": "^起床战争\\s*>>?\\s*(?<team>.+?)\\s*的床被破坏[!！]?$"
+    },
+    {
+      "id": "en_bed_destroy",
+      "type": "bed_destroy",
+      "pattern": "^BED DESTRUCTION > (?<team>.+?) Bed was destroyed by (?<player>.+?)!$"
+    },
+    {
+      "id": "zh_team_eliminated",
+      "type": "team_eliminated",
+      "pattern": "^起床战争\\s*>>?\\s*队伍\\s*(?<team>.+?)\\s*被消灭!$"
+    },
+    {
+      "id": "en_team_eliminated",
+      "type": "team_eliminated",
+      "pattern": "^TEAM ELIMINATED > (?<team>.+?) Team has been eliminated!$"
+    },
+    {
+      "id": "en_victory",
+      "type": "win",
+      "pattern": "^VICTORY!$"
+    }
+  ]
+}

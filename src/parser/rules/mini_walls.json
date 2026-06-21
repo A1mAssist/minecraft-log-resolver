@@ -1,0 +1,62 @@
+{
+  "id": "mini_walls",
+  "name": "Global Mini Walls",
+  "description": "Game-state and result signal rules for mini_walls.",
+  "cleaners": [
+    {
+      "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "zh_mini_walls_experience_reward",
+      "type": "game_mode",
+      "pattern": "^\\+?\\d+\\s*迷你战墙经验[!！]?(?:（[^）]+）)?$",
+      "payload": {
+        "gameMode": "mini_walls"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 45
+    },
+    {
+      "id": "zh_mini_walls_wither_objective",
+      "type": "game_mode",
+      "pattern": "^(?:保护你们团队的迷你凋灵并杀掉其他玩家来获得胜利。|只要你的迷你凋灵活着，你就可以重生！)$",
+      "payload": {
+        "gameMode": "mini_walls"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 116
+    },
+    {
+      "id": "zh_mini_walls_wither_signal",
+      "type": "game_mode",
+      "pattern": "^.*迷你凋灵.*$",
+      "payload": {
+        "gameMode": "mini_walls"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 117
+    },
+    {
+      "id": "zh_mini_walls_mode",
+      "type": "game_mode",
+      "pattern": "^.*迷你战墙.*$",
+      "payload": {
+        "gameMode": "mini_walls"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 118
+    }
+  ]
+}

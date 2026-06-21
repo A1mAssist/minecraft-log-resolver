@@ -1,0 +1,37 @@
+{
+  "id": "local-server-example",
+  "name": "Local Server Example",
+  "description": "Example custom rules. Copy this file outside examples and add the path to customRules before using.",
+  "cleaners": [
+    {
+      "pattern": "^\\[[^\\]]+\\]\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "example_round_start",
+      "type": "round_start",
+      "pattern": "^ExampleGame > Match started on (?<map>.+)!$",
+      "payload": {
+        "gameMode": "duels"
+      }
+    },
+    {
+      "id": "example_win",
+      "type": "win",
+      "pattern": "^ExampleGame > You won!$",
+      "payload": {
+        "gameMode": "duels"
+      }
+    },
+    {
+      "id": "example_loss",
+      "type": "loss",
+      "pattern": "^ExampleGame > You lost!$",
+      "payload": {
+        "gameMode": "duels"
+      }
+    }
+  ]
+}

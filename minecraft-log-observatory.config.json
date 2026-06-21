@@ -1,0 +1,26 @@
+{
+  "roots": [],
+  "encoding": "gb18030",
+  "rules": [],
+  "customRules": [],
+  "scopes": [],
+  "unmatchedTemplatesLimit": 50,
+  "owner": {
+    "mode": "all_local_users",
+    "displayName": "Owner",
+    "aliases": []
+  },
+  "app": {
+    "dataDir": "data",
+    "skinProxyEnabled": true
+  },
+  "cache": {
+    "parse": ".cache/parse-cache.json",
+    "chat": ".cache/chat-event-cache.json",
+    "chatLines": ".cache/chat-lines-cache.json"
+  },
+  "outputs": {
+    "report": "report-combined.json",
+    "summary": "report-combined-summary.json"
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "id": "skywars",
+  "name": "Global SkyWars",
+  "description": "Game-state and result signal rules for skywars.",
+  "cleaners": [
+    {
+      "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "zh_skywars_elo_gain",
+      "type": "win",
+      "pattern": "^在刚刚\\s*(?<map>.+?)\\s*地图的战斗中你空岛分的变化\\s*\\((?<eloDelta>\\+\\d+)\\s*Elo\\)$",
+      "payload": {
+        "gameMode": "skywars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 29
+    },
+    {
+      "id": "zh_skywars_elo_loss",
+      "type": "loss",
+      "pattern": "^在刚刚\\s*(?<map>.+?)\\s*地图的战斗中你空岛分的变化\\s*\\((?<eloDelta>-\\d+)\\s*Elo\\)$",
+      "payload": {
+        "gameMode": "skywars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 30
+    },
+    {
+      "id": "zh_skywars_map_elo_win",
+      "type": "win",
+      "pattern": "^你在地图\\s*(?<map>.+?)\\s*中赢得了\\s*\\((?<eloDelta>\\+\\d+)\\s*Elo\\)$",
+      "payload": {
+        "gameMode": "skywars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 31
+    },
+    {
+      "id": "zh_skywars_win_reward",
+      "type": "win",
+      "pattern": "^\\+?\\d+\\s*空岛战争(?:经验|硬币)!\\s*\\(胜利(?:\\s*x[0-9.]+)?\\)$",
+      "payload": {
+        "gameMode": "skywars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 33
+    },
+    {
+      "id": "en_skywars_experience_win_reward",
+      "type": "win",
+      "pattern": "^\\+?\\d+\\s*SkyWars\\s+Experience\\s*\\(Win\\)$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "skywars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 34
+    },
+    {
+      "id": "zh_skywars_experience_reward",
+      "type": "game_mode",
+      "pattern": "^\\+?\\d+\\s*空岛战争经验[!！]?\\s*(?:（[^）]+）|\\([^)]*\\))?$",
+      "payload": {
+        "gameMode": "skywars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 41
+    },
+    {
+      "id": "zh_skywars_bracket_experience_reward",
+      "type": "game_mode",
+      "pattern": "^\\[空岛战争\\]\\s*\\+\\s*\\d+\\s*经验[!！]?(?:（[^）]+）|\\([^)]*\\))?$",
+      "payload": {
+        "gameMode": "skywars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 42
+    },
+    {
+      "id": "zh_sky_battle_bracket_level_reward",
+      "type": "game_mode",
+      "pattern": "^\\[天空之战\\]\\s*\\+\\s*\\d+\\s*等级经验$",
+      "payload": {
+        "gameMode": "skywars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 43
+    },
+    {
+      "id": "skywars_cages_opened",
+      "type": "round_start",
+      "pattern": "^Cages opened! FIGHT!$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "skywars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 77
+    },
+    {
+      "id": "skywars_mode",
+      "type": "game_mode",
+      "pattern": "^(?:Sky\\s*Wars?(?:\\s+(?:Solo|Doubles|Teams|Ranked|Mega|Laboratory|Lucky\\s+Blocks?|Normal|Insane)(?:\\s+Mode)?)?|空岛战争|天空之战)$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "skywars"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 88
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "id": "duels",
+  "name": "Global Duels",
+  "description": "Game-state and result signal rules for duels.",
+  "cleaners": [
+    {
+      "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "you_won_fight",
+      "type": "win",
+      "pattern": "^You won the fight!$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "duels"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 11
+    },
+    {
+      "id": "you_lost_fight",
+      "type": "loss",
+      "pattern": "^You lost the fight\\.?$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "duels"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 15
+    },
+    {
+      "id": "duels_mode",
+      "type": "game_mode",
+      "pattern": "^(?:Duels?|决斗)\\s*$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "duels"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 89
+    },
+    {
+      "id": "hypixel_named_duel_mode",
+      "type": "game_mode",
+      "pattern": "^(?<duelMode>[A-Za-z][A-Za-z\\s]*?)\\s+Duels?$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "duels"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 91
+    },
+    {
+      "id": "hypixel_duel_winner_line",
+      "type": "round_end",
+      "pattern": "^(?:.*\\s)?(?:\\[[^\\]]+\\]\\s*)*(?<winner>[A-Za-z0-9_]{1,16})\\s+WINNER!\\s*.*$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "duels"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 92
+    }
+  ]
+}

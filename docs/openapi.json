@@ -1,0 +1,3676 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Minecraft Log Observatory API",
+    "version": "0.1.0",
+    "description": "Local API for generated Minecraft log reports, split report store metadata, refresh jobs, and rule-editor support."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8787"
+    }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Report readiness and small overview, or report_not_ready/report_invalid_json/report_invalid_schema",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/app/status": {
+      "get": {
+        "summary": "First-run, setup state with nextActions, recovery actions, launcher contract, project, report/store readiness including missing store files, refresh, and refresh-needed status",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/config": {
+      "get": {
+        "summary": "Effective local app config and constrained local overlay metadata",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      },
+      "put": {
+        "summary": "Save whitelisted local-only config fields to a safe local overlay",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/config/validate-roots": {
+      "post": {
+        "summary": "Validate user-selected local Minecraft log roots before saving",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateRootsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/system/select-directory": {
+      "post": {
+        "summary": "Open a local Windows folder picker for first-run log root setup",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectDirectoryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Selected directory, cancelled picker, and optional root validation result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectDirectoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "405": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "501": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/summary": {
+      "get": {
+        "summary": "Generated report summary JSON, or summary_invalid_json/summary_invalid_schema",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/report": {
+      "get": {
+        "summary": "Full generated report JSON, or report_invalid_json/report_invalid_schema",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/profile": {
+      "get": {
+        "summary": "Career/profile highlights and identity leaderboards for dashboard and share-card UI",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/metrics/definitions": {
+      "get": {
+        "summary": "Static machine-readable metric definitions for frontend display semantics",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/activity": {
+      "get": {
+        "summary": "Continuous-mode activity segments such as The Pit",
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rounds": {
+      "get": {
+        "summary": "Paginated round rows with stable server display fields, result hints, and unknown audit filters",
+        "parameters": [
+          {
+            "name": "set",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "reliable",
+                "ignored",
+                "all"
+              ],
+              "default": "reliable"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "result",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "win",
+                "loss",
+                "unknown",
+                "ambiguous",
+                "not_applicable"
+              ]
+            }
+          },
+          {
+            "name": "resultHint",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "probably_loss",
+                "probably_win",
+                "keep_unknown"
+              ]
+            }
+          },
+          {
+            "name": "resultHintReason",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "unknownAuditCategory",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "bedwars_no_safe_result_evidence",
+                "bedwars_low_evidence_pseudo_candidate",
+                "bedwars_self_death_boundary_review",
+                "bedwars_team_win_low_confidence_review",
+                "non_bedwars_remaining_unknown"
+              ]
+            }
+          },
+          {
+            "name": "unknownNextAction",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "label_sample",
+                "review_owner_identity",
+                "review_rule_candidate",
+                "keep_unknown"
+              ]
+            }
+          },
+          {
+            "name": "unknownReviewPriority",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "high",
+                "medium",
+                "low"
+              ]
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "minDuration",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "maxDuration",
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "hasKnownResult",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/modes": {
+      "get": {
+        "summary": "Game mode totals",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/results": {
+      "get": {
+        "summary": "Result coverage, signal debug data, unknown hints, and privacy-safe unknown audit queues",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/result-candidates": {
+      "get": {
+        "summary": "Mined candidate chat lines for improving result rules",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/skin": {
+      "get": {
+        "summary": "Same-origin Minecraft skin texture proxy for the 3D viewer",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "player",
+                "uuid",
+                "url",
+                "auto"
+              ],
+              "default": "auto"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PNG skin texture",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "413": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "502": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/refresh": {
+      "get": {
+        "summary": "Current refresh job status with phase, status, progress, total and per-phase duration, failure classification, cancellation, and log tail",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      },
+      "post": {
+        "summary": "Start a background report refresh followed by split-store export",
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/refresh/cancel": {
+      "post": {
+        "summary": "Request cancellation of the current refresh job",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "202": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/refresh/history": {
+      "get": {
+        "summary": "Recently completed refresh jobs with summary counts, per-phase durations, failure classification, and non-fatal warnings for corrupt derived history",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/performance": {
+      "get": {
+        "summary": "Lightweight local performance baseline, saved-baseline comparison, and machine-readable recommendations summarized from privacy-safe refresh history, store metadata, store read baseline, recent store table read metrics, cache stats, and API JSON cache stats without raw refresh debug fields",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/data/cleanup": {
+      "post": {
+        "summary": "Remove derived cache/report/store files without touching Minecraft logs",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanupRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/diagnostics": {
+      "get": {
+        "summary": "Privacy-safe local diagnostics, optionally with full local paths",
+        "parameters": [
+          {
+            "name": "full",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/diagnostics/package": {
+      "get": {
+        "summary": "Privacy-safe troubleshooting package with app status, diagnostics, refresh history summaries without raw current files, errors, logs, or log tails, rule-pack validation, manifest, and privacy audit",
+        "parameters": [
+          {
+            "name": "full",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/share/package": {
+      "get": {
+        "summary": "Privacy-safe aggregate stats package for sharing with manifest and privacy audit",
+        "parameters": [
+          {
+            "name": "identities",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/accounts": {
+      "get": {
+        "summary": "Owner aggregate and raw local account stats",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/accounts/playtime": {
+      "get": {
+        "summary": "Local ID playtime ranking",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "user",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/accounts/{name}": {
+      "get": {
+        "summary": "One local account or owner aggregate",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/sources": {
+      "get": {
+        "summary": "Paginated source/client groups",
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/scopes": {
+      "get": {
+        "summary": "Paginated version/scope groups",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/days": {
+      "get": {
+        "summary": "Paginated daily report rows",
+        "parameters": [
+          {
+            "name": "dateFrom",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "dateTo",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rules": {
+      "get": {
+        "summary": "Rule coverage, cache stats, unmatched categories, and rule quality summary",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rules/test": {
+      "post": {
+        "summary": "Classify one raw chat message using current rules",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleTestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rules/draft": {
+      "post": {
+        "summary": "Generate a first-pass rule from one raw chat message",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rules/draft-from-labels": {
+      "post": {
+        "summary": "Generate a draft rule pack from reviewed label rows",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleDraftFromLabelsRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rules/validate": {
+      "post": {
+        "summary": "Validate one inline custom rule pack",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RulePack"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rules/doctor": {
+      "get": {
+        "summary": "Rule pack lifecycle and quality diagnostics",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rules/dry-run": {
+      "post": {
+        "summary": "Preview rule changes without writing report, store, or config data; includes a promotionGate for audited rule changes",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleDryRunRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rules/audit-workflow": {
+      "post": {
+        "summary": "Validate reviewed unknown-audit labels, generate a draft rule pack, and optionally dry-run it without enabling rules",
+        "responses": {
+          "200": {
+            "description": "Reviewed-label audit workflow result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleAuditWorkflowResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleAuditWorkflowRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/rule-packs": {
+      "get": {
+        "summary": "Bundled and configured custom rule pack metadata",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rule-packs/validate": {
+      "get": {
+        "summary": "Validate configured custom rule packs",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rule-packs/user": {
+      "get": {
+        "summary": "List project-managed user rule packs",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      },
+      "post": {
+        "summary": "Validate and save a project-managed user rule pack",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RulePack"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rule-packs/user/enable": {
+      "post": {
+        "summary": "Enable or disable a project-managed user rule pack in local config",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rule-packs/user/backups": {
+      "post": {
+        "summary": "List project-managed user rule pack backups",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rule-packs/user/restore": {
+      "post": {
+        "summary": "Restore a project-managed user rule pack from backup",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rule-packs/user/{id}": {
+      "get": {
+        "summary": "Read one project-managed user rule pack",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete one project-managed user rule pack",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/store": {
+      "get": {
+        "summary": "Split report store manifest, or store_not_ready/store_invalid_json/store_invalid_manifest when derived store data is absent or malformed",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/store/table": {
+      "get": {
+        "summary": "Paginated rows from a JSONL table declared in the split report store manifest",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/timeseries": {
+      "get": {
+        "summary": "Time series rows",
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "week",
+                "month"
+              ],
+              "default": "day"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/unmatched": {
+      "get": {
+        "summary": "Unmatched debug data",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/refresh/preflight": {
+      "post": {
+        "summary": "Run refresh preflight checks without starting a refresh job",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "405": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/rules/audit": {
+      "get": {
+        "summary": "Recent privacy-safe rule lifecycle audit entries for save, enable, restore, draft, and dry-run operations",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "405": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/unknown-audit/labels": {
+      "post": {
+        "summary": "Validate and summarize reviewed unknown-audit label rows without changing report, store, config, or rules",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnknownAuditLabelsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reviewed unknown-audit label summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnknownAuditLabelsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/unknown-audit/status": {
+      "post": {
+        "summary": "Return the next-step readiness status for reviewed unknown-audit label rows without drafting or dry-running rules",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnknownAuditLabelsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Reviewed unknown-audit label readiness status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnknownAuditStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid reviewed label rows or stale round refs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnknownAuditStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/unknown-audit/label-sets": {
+      "get": {
+        "summary": "List local derived unknown-audit label sets saved by the review UI without changing report, store, config, or rules",
+        "responses": {
+          "200": {
+            "description": "Local unknown-audit label set list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnknownAuditLabelSetListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Save a local derived unknown-audit label set for frontend/manual review drafts",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnknownAuditLabelSetSaveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved local unknown-audit label set with validation/readiness summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnknownAuditLabelSetResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    },
+    "/api/unknown-audit/label-sets/{id}": {
+      "parameters": [
+        {
+          "name": "id",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,79}$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Read one local derived unknown-audit label set and its current validation/readiness summary",
+        "responses": {
+          "200": {
+            "description": "Local unknown-audit label set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnknownAuditLabelSetResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "503": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      },
+      "put": {
+        "summary": "Replace one local derived unknown-audit label set",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnknownAuditLabelSetUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated local unknown-audit label set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnknownAuditLabelSetResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete one local derived unknown-audit label set without touching report, store, config, rules, or raw logs",
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "400": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/JsonResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/JsonResponse"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "JsonResponse": {
+        "description": "JSON response",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiEnvelope"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ApiEnvelope": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "ConfigUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "roots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "owner": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "displayName": {
+                "type": "string"
+              }
+            }
+          },
+          "customRules": {
+            "type": "array",
+            "description": "Safe project-relative custom rule pack directories or .json files.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "app": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "dataDir": {
+                "type": "string",
+                "description": "Safe project-relative derived-data directory; must not target Minecraft roots, config files, rule packs, source/docs directories, or package metadata."
+              },
+              "skinProxyEnabled": {
+                "type": "boolean"
+              }
+            }
+          },
+          "outputs": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Derived report output names. Values must be distinct project-relative .json paths and must not target config files, rule packs, source/docs directories, or package metadata.",
+            "properties": {
+              "report": {
+                "type": "string",
+                "description": "Project-relative .json path for the full report output."
+              },
+              "summary": {
+                "type": "string",
+                "description": "Project-relative .json path for the summary report output."
+              }
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ValidateRootsRequest": {
+        "type": "object",
+        "required": [
+          "roots"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "roots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "encoding": {
+            "type": "string",
+            "description": "Optional TextDecoder-supported encoding label, for example gb18030 or utf-8."
+          }
+        }
+      },
+      "SelectDirectoryRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "validate": {
+            "type": "boolean",
+            "description": "When true, validate the selected path as a Minecraft log root before returning."
+          },
+          "encoding": {
+            "type": "string",
+            "description": "Optional TextDecoder-supported encoding label used only when validate is true."
+          }
+        }
+      },
+      "SelectDirectoryResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string",
+            "description": "Selected local directory path when ok is true."
+          },
+          "cancelled": {
+            "type": "boolean",
+            "description": "True when the user dismissed the native picker without choosing a folder."
+          },
+          "validation": {
+            "type": "object",
+            "description": "Root validation result included only when validate=true and a path was selected."
+          }
+        }
+      },
+      "CleanupRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "type": "string",
+            "default": "cache",
+            "enum": [
+              "cache",
+              "report",
+              "store",
+              "all_derived"
+            ]
+          },
+          "dryRun": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "RuleTestRequest": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "ruleSets": {
+            "type": "array",
+            "description": "Optional known rule set ids to limit matching for this test request.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "customRulePaths": {
+            "type": "array",
+            "description": "Optional safe project-relative rule-pack directories or .json files used only for this test request.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RuleDraftRequest": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "default": "round_end"
+          },
+          "gameMode": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "RulePack": {
+        "type": "object",
+        "required": [
+          "id",
+          "rules"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "cleaners": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pattern": {
+                  "type": "string"
+                },
+                "flags": {
+                  "type": "string"
+                },
+                "replacement": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "type",
+                "pattern"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "pattern": {
+                  "type": "string"
+                },
+                "flags": {
+                  "type": "string"
+                },
+                "payload": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "RuleQualityImpact": {
+        "type": "object",
+        "required": [
+          "matchedChatLines",
+          "resultSignal",
+          "resultEvidence",
+          "boundarySignal"
+        ],
+        "properties": {
+          "matchedChatLines": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "resultSignal": {
+            "type": "boolean",
+            "description": "True when this rule directly emitted a win/loss chat event in the current report."
+          },
+          "resultEvidence": {
+            "type": "boolean",
+            "description": "True when this rule appears in official win/loss result evidence for at least one reliable round."
+          },
+          "boundarySignal": {
+            "type": "boolean",
+            "description": "True when this rule produced round/session boundary or mode/population signals."
+          }
+        }
+      },
+      "RuleQualityRule": {
+        "type": "object",
+        "required": [
+          "ruleSet",
+          "rulePack",
+          "ruleId",
+          "key",
+          "type",
+          "hitCount",
+          "riskGroup",
+          "impact"
+        ],
+        "properties": {
+          "ruleSet": {
+            "type": "string",
+            "description": "Effective legacy rule set key used by result evidence and backward-compatible rule selection."
+          },
+          "rulePack": {
+            "type": "string",
+            "description": "Physical rule pack id that contains this rule after mode-based bundled rule splitting."
+          },
+          "ruleId": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "description": "Stable physical rule key in rulePack:ruleId form."
+          },
+          "type": {
+            "type": "string"
+          },
+          "hitCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "riskGroup": {
+            "type": "string",
+            "enum": [
+              "safe_result",
+              "boundary_only",
+              "diagnostic_only",
+              "experimental"
+            ]
+          },
+          "impact": {
+            "$ref": "#/components/schemas/RuleQualityImpact"
+          }
+        }
+      },
+      "RuleQualityDuplicatePattern": {
+        "type": "object",
+        "required": [
+          "type",
+          "flags",
+          "pattern",
+          "rules"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "flags": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RuleQualityRuleSetSummary": {
+        "type": "object",
+        "required": [
+          "totalRules",
+          "hitRules",
+          "zeroHitRules",
+          "hits"
+        ],
+        "properties": {
+          "totalRules": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hitRules": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "zeroHitRules": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hits": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "RuleQualitySummary": {
+        "type": "object",
+        "required": [
+          "totalRules",
+          "hitRules",
+          "zeroHitRules",
+          "byRiskGroup",
+          "byType",
+          "byRuleSet",
+          "byRulePack",
+          "duplicatePatterns",
+          "topHitRules",
+          "zeroHitSamples",
+          "resultImpactRules",
+          "boundaryImpactRules",
+          "policy"
+        ],
+        "properties": {
+          "totalRules": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hitRules": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "zeroHitRules": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "byRiskGroup": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "byType": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "byRuleSet": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RuleQualityRuleSetSummary"
+            }
+          },
+          "byRulePack": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RuleQualityRuleSetSummary"
+            }
+          },
+          "duplicatePatterns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuleQualityDuplicatePattern"
+            }
+          },
+          "topHitRules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuleQualityRule"
+            }
+          },
+          "zeroHitSamples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuleQualityRule"
+            }
+          },
+          "resultImpactRules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuleQualityRule"
+            }
+          },
+          "boundaryImpactRules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuleQualityRule"
+            }
+          },
+          "policy": {
+            "type": "object",
+            "properties": {
+              "safe_result": {
+                "type": "string"
+              },
+              "boundary_only": {
+                "type": "string"
+              },
+              "diagnostic_only": {
+                "type": "string"
+              },
+              "experimental": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "ServerEvidence": {
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "server_connect",
+              "scoreboard",
+              "chat_template",
+              "chat_text",
+              "scope_hint",
+              "unknown"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "lineNo": {
+            "type": "integer"
+          },
+          "timestampMs": {
+            "type": "number"
+          }
+        }
+      },
+      "RoundServerFields": {
+        "type": "object",
+        "required": [
+          "serverNetwork",
+          "serverAddress",
+          "serverLabel",
+          "serverConfidence",
+          "serverEvidence"
+        ],
+        "properties": {
+          "serverNetwork": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Human-readable server network such as Hypixel or NetEase when known."
+          },
+          "serverAddress": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Server host or host:nonDefaultPort from a direct connection log when available."
+          },
+          "serverLabel": {
+            "type": "string",
+            "description": "Primary display label for round lists and details."
+          },
+          "serverConfidence": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "inferred",
+              "unknown"
+            ]
+          },
+          "serverEvidence": {
+            "$ref": "#/components/schemas/ServerEvidence"
+          }
+        }
+      },
+      "RoundBedDestroyFields": {
+        "type": "object",
+        "required": [
+          "bedDestroys",
+          "selfBedDestroys",
+          "playerBedDestroys"
+        ],
+        "properties": {
+          "bedDestroys": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "All observed bed-destroy events in the round or aggregate."
+          },
+          "selfBedDestroys": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Compatibility field for beds destroyed by the owner/player."
+          },
+          "playerBedDestroys": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Recommended public/API field for beds destroyed by the owner/player; equals selfBedDestroys."
+          }
+        }
+      },
+      "RoundStreakFields": {
+        "type": "object",
+        "required": [
+          "playerMaxKillStreak"
+        ],
+        "properties": {
+          "playerMaxKillStreak": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Highest confirmed owner/player kill streak within this round or activity segment; self deaths and segment/round boundaries reset it. Broadcast streak messages for other players do not affect this field."
+          }
+        }
+      },
+      "WinStreakPolicySummary": {
+        "type": "object",
+        "required": [
+          "policy",
+          "best",
+          "current"
+        ],
+        "properties": {
+          "policy": {
+            "type": "string",
+            "enum": [
+              "break_unknown",
+              "skip_unknown"
+            ]
+          },
+          "best": {
+            "$ref": "#/components/schemas/WinStreakRun"
+          },
+          "current": {
+            "$ref": "#/components/schemas/WinStreakRun"
+          }
+        }
+      },
+      "WinStreakRun": {
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "startAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "startKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "endKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ProfileStreaks": {
+        "type": "object",
+        "properties": {
+          "win": {
+            "type": "object",
+            "description": "Win streaks over formal result-eligible rounds. CamelCase keys are primary for the frontend; snake_case aliases mirror the policy ids.",
+            "properties": {
+              "breakUnknown": {
+                "$ref": "#/components/schemas/WinStreakPolicySummary"
+              },
+              "skipUnknown": {
+                "$ref": "#/components/schemas/WinStreakPolicySummary"
+              },
+              "break_unknown": {
+                "$ref": "#/components/schemas/WinStreakPolicySummary"
+              },
+              "skip_unknown": {
+                "$ref": "#/components/schemas/WinStreakPolicySummary"
+              }
+            }
+          },
+          "playerMaxKillStreak": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "ActivityStreakFields": {
+        "type": "object",
+        "properties": {
+          "playerMaxKillStreak": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Highest confirmed owner/player kill streak in the activity segment."
+          },
+          "observedBroadcastMaxKillStreak": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Highest kill-streak number observed in server chat broadcasts; this may belong to another player and is not a personal metric."
+          },
+          "maxStreak": {
+            "type": "integer",
+            "minimum": 0,
+            "deprecated": true,
+            "description": "Legacy alias for observedBroadcastMaxKillStreak."
+          },
+          "rewardEvents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Count of explicit activity reward prompt events, such as The Pit kill/assist rewards, gold pickups, free XP, death-streak rewards, or streak-point awards. This is an event count, not a gold/XP amount."
+          },
+          "goldEarned": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Sum of explicit The Pit gold amounts parsed from player reward chat lines and owner-bound bounty claims. This is not a full economy ledger."
+          },
+          "xpEarned": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Sum of explicit The Pit XP amounts parsed from player reward chat lines. This is not a full economy ledger."
+          },
+          "bountyClaims": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Count of The Pit bounty-claim broadcasts where the killer is confirmed to be the owner/player."
+          },
+          "bountyGoldEarned": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Gold earned from owner-bound The Pit bounty-claim broadcasts. This value is included in goldEarned."
+          }
+        }
+      },
+      "MetricDefinition": {
+        "type": "object",
+        "required": [
+          "label",
+          "scope",
+          "unit",
+          "source",
+          "description"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "description": "Metric ownership or aggregation scope such as player, observed_server_chat, activity, result_eligible_rounds, or formal_result_rounds."
+          },
+          "unit": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "caveat": {
+            "type": "string"
+          },
+          "deprecated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MetricDefinitions": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/components/schemas/MetricDefinition"
+        },
+        "description": "Machine-readable explanations for user-facing metrics so clients do not confuse player metrics with observed broadcasts or non-result activity rows."
+      },
+      "RuleDraftFromLabelsRequest": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "validateRoundRefs": {
+            "type": "boolean",
+            "default": true,
+            "description": "When true, rows with roundRef must still exist in the current reliable unknown report queue."
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewedLabelRow"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewedLabelRow"
+            }
+          }
+        }
+      },
+      "RuleAuditWorkflowRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "targetMode": {
+            "type": "string",
+            "description": "Optional target game mode used by the dry-run promotion gate."
+          },
+          "validateRoundRefs": {
+            "type": "boolean",
+            "default": true
+          },
+          "skipDryRun": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, stop after label validation and draft generation."
+          },
+          "full": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, dry-run samples may include local-only line references."
+          },
+          "sampleLimit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewedLabelRow"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewedLabelRow"
+            }
+          }
+        }
+      },
+      "ReviewedLabelRow": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "roundRef": {
+            "type": "string"
+          },
+          "reviewLabel": {
+            "type": "string",
+            "enum": [
+              "keep-unknown",
+              "win",
+              "loss",
+              "ignore",
+              "new-rule-needed"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "enum": [
+              "keep-unknown",
+              "win",
+              "loss",
+              "ignore",
+              "new-rule-needed"
+            ]
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "keep-unknown",
+              "win",
+              "loss",
+              "ignore",
+              "new-rule-needed"
+            ]
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "keep-unknown",
+              "win",
+              "loss",
+              "ignore",
+              "new-rule-needed"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "sample": {
+            "type": "string"
+          },
+          "line": {
+            "type": "string"
+          },
+          "gameMode": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "negativeExamples": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "UnknownAuditLabelsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "validateRoundRefs": {
+            "type": "boolean",
+            "default": true,
+            "description": "When true, rows with roundRef must still exist in the current reliable unknown report queue."
+          },
+          "sampleLimit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewedLabelRow"
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewedLabelRow"
+            }
+          }
+        }
+      },
+      "UnknownAuditLabelsResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "ok",
+          "status",
+          "readyForWorkflow",
+          "workflowRecommended",
+          "readiness",
+          "allowedLabels",
+          "candidates",
+          "missingRuleTextRows",
+          "workflow"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LabelReviewReadinessStatus"
+          },
+          "readyForWorkflow": {
+            "type": "boolean",
+            "description": "True when the reviewed batch is complete enough to either run the workflow or archive as keep-unknown evidence."
+          },
+          "workflowRecommended": {
+            "type": "boolean",
+            "description": "True when draftable rule rows exist and the next step should be the combined audit workflow/dry-run preview."
+          },
+          "readiness": {
+            "$ref": "#/components/schemas/LabelReviewReadiness"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "policy": {
+            "type": "string"
+          },
+          "writes": {
+            "$ref": "#/components/schemas/NoOfficialWrites"
+          },
+          "totalRows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "labeledRows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unlabeledRows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "allowedLabels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewLabel"
+            }
+          },
+          "checkedRoundRefs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "knownRoundRefs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "byLabel": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "byCategory": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "byNextAction": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "byMode": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "byLabelAndCategory": {
+            "type": "object"
+          },
+          "candidates": {
+            "$ref": "#/components/schemas/UnknownAuditLabelCandidates"
+          },
+          "missingRuleTextRows": {
+            "type": "array",
+            "description": "Rows labeled win, loss, or ignore that cannot draft rules yet because no exact message/text field was supplied.",
+            "items": {
+              "$ref": "#/components/schemas/MissingRuleTextRow"
+            }
+          },
+          "staleRoundRefs": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/LabelReviewWorkflowHints"
+          }
+        }
+      },
+      "UnknownAuditStatusResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "ok",
+          "status",
+          "nextStep",
+          "blocked",
+          "requiresHumanInput",
+          "canDraftRules",
+          "canRunDryRun",
+          "canArchive",
+          "readyForWorkflow",
+          "workflowRecommended",
+          "counts",
+          "writes"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LabelReviewReadinessStatus"
+          },
+          "nextStep": {
+            "type": "string",
+            "enum": [
+              "fix_labels",
+              "export_queue",
+              "label_rows",
+              "add_rule_text",
+              "run_audit_workflow",
+              "archive_keep_unknown"
+            ]
+          },
+          "blocked": {
+            "type": "boolean"
+          },
+          "blockingReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "invalid_labels",
+              "empty_queue",
+              "unlabeled_rows",
+              "missing_rule_text",
+              null
+            ]
+          },
+          "requiresHumanInput": {
+            "type": "boolean"
+          },
+          "canDraftRules": {
+            "type": "boolean"
+          },
+          "canRunDryRun": {
+            "type": "boolean"
+          },
+          "canArchive": {
+            "type": "boolean"
+          },
+          "nextCommand": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "readyForWorkflow": {
+            "type": "boolean"
+          },
+          "workflowRecommended": {
+            "type": "boolean"
+          },
+          "counts": {
+            "type": "object",
+            "required": [
+              "totalRows",
+              "labeledRows",
+              "unlabeledRows",
+              "actionableRows",
+              "draftableRuleRows",
+              "missingRuleTextRows",
+              "errors"
+            ],
+            "properties": {
+              "totalRows": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "labeledRows": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unlabeledRows": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "actionableRows": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "draftableRuleRows": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "missingRuleTextRows": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "errors": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "byLabel": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "byCategory": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "byNextAction": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "nextActions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "missingRuleTextRows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingRuleTextRow"
+            }
+          },
+          "writes": {
+            "$ref": "#/components/schemas/NoOfficialWrites"
+          }
+        }
+      },
+      "RuleAuditWorkflowResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "ok",
+          "writes",
+          "labelSummary",
+          "draft",
+          "dryRun",
+          "artifacts",
+          "workflow"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "policy": {
+            "type": "string"
+          },
+          "writes": {
+            "$ref": "#/components/schemas/AuditWorkflowWrites"
+          },
+          "input": {
+            "type": "object",
+            "properties": {
+              "rows": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "validateRoundRefs": {
+                "type": "boolean"
+              },
+              "targetMode": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          },
+          "labelSummary": {
+            "$ref": "#/components/schemas/UnknownAuditLabelsResponse"
+          },
+          "draft": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AuditWorkflowDraft"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dryRun": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RuleDryRunResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "artifacts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Local artifact paths when artifact writing is enabled. API calls currently keep this empty."
+          },
+          "artifactSummary": {
+            "$ref": "#/components/schemas/AuditWorkflowArtifactSummary"
+          },
+          "workflow": {
+            "$ref": "#/components/schemas/AuditWorkflowStatus"
+          }
+        }
+      },
+      "ReviewLabel": {
+        "type": "string",
+        "enum": [
+          "keep-unknown",
+          "win",
+          "loss",
+          "ignore",
+          "new-rule-needed"
+        ]
+      },
+      "NoOfficialWrites": {
+        "type": "object",
+        "properties": {
+          "report": {
+            "type": "boolean",
+            "const": false
+          },
+          "store": {
+            "type": "boolean",
+            "const": false
+          },
+          "config": {
+            "type": "boolean",
+            "const": false
+          },
+          "rules": {
+            "type": "boolean",
+            "const": false
+          },
+          "labelSet": {
+            "type": "boolean",
+            "const": false,
+            "description": "False for validation, status, draft, dry-run, and workflow APIs; saving label-set drafts uses UnknownAuditLabelSetWrites instead."
+          }
+        }
+      },
+      "AuditWorkflowWrites": {
+        "type": "object",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/NoOfficialWrites"
+          }
+        ],
+        "properties": {
+          "artifacts": {
+            "type": "boolean",
+            "description": "True only for CLI/local workflow calls that explicitly write workflow artifacts."
+          },
+          "dryRunCache": {
+            "type": "boolean",
+            "description": "Dry-run may write isolated preview caches under derived data; it never writes official report/store/config/rules."
+          }
+        }
+      },
+      "UnknownAuditLabelCandidates": {
+        "type": "object",
+        "properties": {
+          "keepUnknown": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "win": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "loss": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ignore": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "newRuleNeeded": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "actionableRows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "draftableRuleRows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "missingRuleTextRows": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of win/loss/ignore labels that need an exact message field before rule drafting."
+          },
+          "needsDryRun": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MissingRuleTextRow": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "label": {
+            "$ref": "#/components/schemas/ReviewLabel"
+          },
+          "roundRef": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "nextAction": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          }
+        }
+      },
+      "LabelReviewReadinessStatus": {
+        "type": "string",
+        "enum": [
+          "invalid_labels",
+          "empty_queue",
+          "needs_labeling",
+          "needs_rule_text",
+          "ready_for_workflow",
+          "ready_keep_unknown_only"
+        ]
+      },
+      "LabelReviewReadiness": {
+        "type": "object",
+        "required": [
+          "status",
+          "nextStep",
+          "blocked",
+          "requiresHumanInput",
+          "canDraftRules",
+          "canRunDryRun",
+          "canArchive",
+          "readyForWorkflow",
+          "workflowRecommended",
+          "nextActions"
+        ],
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/LabelReviewReadinessStatus"
+          },
+          "nextStep": {
+            "type": "string",
+            "enum": [
+              "fix_labels",
+              "export_queue",
+              "label_rows",
+              "add_rule_text",
+              "run_audit_workflow",
+              "archive_keep_unknown"
+            ],
+            "description": "Machine-readable next action for the reviewed label batch."
+          },
+          "blocked": {
+            "type": "boolean",
+            "description": "True when the workflow cannot safely proceed without fixing labels, exporting a queue, or adding human review input."
+          },
+          "blockingReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "invalid_labels",
+              "empty_queue",
+              "unlabeled_rows",
+              "missing_rule_text",
+              null
+            ]
+          },
+          "requiresHumanInput": {
+            "type": "boolean"
+          },
+          "canDraftRules": {
+            "type": "boolean"
+          },
+          "canRunDryRun": {
+            "type": "boolean"
+          },
+          "canArchive": {
+            "type": "boolean"
+          },
+          "nextCommand": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Suggested local CLI command template for the next backend step."
+          },
+          "readyForWorkflow": {
+            "type": "boolean"
+          },
+          "workflowRecommended": {
+            "type": "boolean"
+          },
+          "nextActions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "LabelReviewWorkflowHints": {
+        "type": "object",
+        "properties": {
+          "readiness": {
+            "$ref": "#/components/schemas/LabelReviewReadiness"
+          },
+          "nextActions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AuditWorkflowDraft": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "rulePack": {
+            "$ref": "#/components/schemas/RulePack"
+          },
+          "rules": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sourceRows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "decisions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "RuleDryRunResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "promotionGate": {
+            "$ref": "#/components/schemas/RuleDryRunPromotionGate"
+          },
+          "roundChanges": {
+            "type": "object"
+          },
+          "summary": {
+            "type": "object"
+          },
+          "risks": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "writes": {
+            "type": "object"
+          }
+        }
+      },
+      "AuditWorkflowArtifactSummary": {
+        "type": "object",
+        "description": "Privacy-safe local artifact summary. Paths are project-relative or file names, never absolute local paths.",
+        "properties": {
+          "privacy": {
+            "type": "string",
+            "const": "local_paths_redacted"
+          },
+          "outDir": {
+            "type": "string"
+          },
+          "files": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "fileName",
+                "relativePath"
+              ],
+              "properties": {
+                "fileName": {
+                  "type": "string"
+                },
+                "relativePath": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AuditWorkflowStatus": {
+        "type": "object",
+        "required": [
+          "status",
+          "nextActions"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "validated",
+              "invalid_labels",
+              "invalid_draft",
+              "missing_rule_text",
+              "no_draftable_rules",
+              "draft_ready",
+              "dry_run_pass",
+              "dry_run_review"
+            ]
+          },
+          "nextActions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PerformanceComparison": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "warning": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "deltas": {
+            "type": "object"
+          },
+          "phaseDeltas": {
+            "type": "object"
+          },
+          "regressions": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "summary": {
+            "type": "object"
+          }
+        }
+      },
+      "RuleDryRunRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "rulePack": {
+            "$ref": "#/components/schemas/RulePack"
+          },
+          "rulePackId": {
+            "type": "string"
+          },
+          "targetMode": {
+            "type": "string",
+            "description": "Optional target mode used by promotionGate to separate target unknown deltas from non-target mode changes."
+          },
+          "full": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "RuleDryRunPromotionGate": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "review",
+              "blocked"
+            ]
+          },
+          "targetMode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checks": {
+            "type": "object"
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "policy": {
+            "type": "string"
+          }
+        }
+      },
+      "UnknownAuditLabelSetSource": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "auditExport": {
+            "type": "string",
+            "description": "Optional source export filename or logical name."
+          },
+          "mode": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "reportGeneratedAt": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
+        }
+      },
+      "UnknownAuditLabelSetSaveRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,79}$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/UnknownAuditLabelSetSource"
+          },
+          "validateRoundRefs": {
+            "type": "boolean",
+            "default": true
+          },
+          "sampleLimit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewedLabelRow"
+            }
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewedLabelRow"
+            }
+          }
+        }
+      },
+      "UnknownAuditLabelSetWrites": {
+        "type": "object",
+        "required": [
+          "report",
+          "store",
+          "config",
+          "rules",
+          "labelSet"
+        ],
+        "properties": {
+          "report": {
+            "type": "boolean",
+            "const": false
+          },
+          "store": {
+            "type": "boolean",
+            "const": false
+          },
+          "config": {
+            "type": "boolean",
+            "const": false
+          },
+          "rules": {
+            "type": "boolean",
+            "const": false
+          },
+          "labelSet": {
+            "type": "boolean",
+            "description": "True only for the derived local label-set file."
+          }
+        }
+      },
+      "UnknownAuditLabelSetResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "ok",
+          "id",
+          "title",
+          "rows",
+          "summary",
+          "readiness",
+          "writes"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "schema": {
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/UnknownAuditLabelSetSource"
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "validateRoundRefs": {
+            "type": "boolean"
+          },
+          "filePath": {
+            "type": "string",
+            "description": "Local derived file path; keep local-only."
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewedLabelRow"
+            }
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewedLabelRow"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/UnknownAuditLabelsResponse"
+          },
+          "readiness": {
+            "$ref": "#/components/schemas/LabelReviewReadiness"
+          },
+          "writes": {
+            "$ref": "#/components/schemas/UnknownAuditLabelSetWrites"
+          }
+        }
+      },
+      "UnknownAuditLabelSetListItem": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "title",
+          "rows",
+          "valid"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/UnknownAuditLabelSetSource"
+          },
+          "createdAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "filePath": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "modifiedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "rows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "valid": {
+            "type": "boolean"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "UnknownAuditLabelSetListResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "ok",
+          "total",
+          "items"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "policy": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnknownAuditLabelSetListItem"
+            }
+          }
+        }
+      },
+      "UnknownAuditLabelSetUpdateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/UnknownAuditLabelSetSource"
+          },
+          "validateRoundRefs": {
+            "type": "boolean",
+            "default": true
+          },
+          "sampleLimit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewedLabelRow"
+            }
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewedLabelRow"
+            }
+          }
+        }
+      }
+    }
+  }
+}

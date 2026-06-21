@@ -1,0 +1,42 @@
+{
+  "id": "hide_and_seek",
+  "name": "Global Hide and Seek",
+  "description": "Game-state and result signal rules for hide_and_seek.",
+  "cleaners": [
+    {
+      "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "zh_hide_and_seek_animal_team",
+      "type": "game_mode",
+      "pattern": "^你现在在动物队！$",
+      "payload": {
+        "gameMode": "hide_and_seek"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 114
+    },
+    {
+      "id": "zh_hide_and_seek_disguise",
+      "type": "game_mode",
+      "pattern": "^你现在伪装成.+了！$",
+      "payload": {
+        "gameMode": "hide_and_seek"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 115
+    }
+  ]
+}

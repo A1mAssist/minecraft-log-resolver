@@ -1,0 +1,33 @@
+{
+  "id": "bridge",
+  "name": "Global Bridge",
+  "description": "Game-state and result signal rules for bridge.",
+  "cleaners": [
+    {
+      "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "bridge_mode",
+      "type": "game_mode",
+      "pattern": "^(?:The Bridge|Bridge Duels?|战桥|搭桥)\\s*$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "bridge"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 90
+    }
+  ]
+}

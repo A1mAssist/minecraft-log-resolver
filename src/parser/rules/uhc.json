@@ -1,0 +1,32 @@
+{
+  "id": "uhc",
+  "name": "Global UHC",
+  "description": "Game-state and result signal rules for uhc.",
+  "cleaners": [
+    {
+      "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "uhc_zh_bracket_countdown",
+      "type": "round_countdown",
+      "pattern": "^\\[UHC\\]\\s*游戏将在\\s*(?<seconds>\\d+)\\s*秒后开始$",
+      "payload": {
+        "gameMode": "uhc"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 60
+    }
+  ]
+}

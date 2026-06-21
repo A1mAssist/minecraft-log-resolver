@@ -1,0 +1,106 @@
+{
+  "id": "mega_walls",
+  "name": "Global Mega Walls",
+  "description": "Game-state and result signal rules for mega_walls.",
+  "cleaners": [
+    {
+      "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "zh_mega_walls_experience_reward",
+      "type": "game_mode",
+      "pattern": "^\\+?\\d+\\s*超级战墙经验[!！]?(?:（[^）]+）)?$",
+      "payload": {
+        "gameMode": "mega_walls"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 44
+    },
+    {
+      "id": "mega_walls_walls_fall_timer",
+      "type": "game_mode",
+      "pattern": "^You have (?<minutes>\\d+) minutes? until the walls fall down!$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "mega_walls"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 71
+    },
+    {
+      "id": "mega_walls_mode",
+      "type": "game_mode",
+      "pattern": "^Mega Walls$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "mega_walls"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 72
+    },
+    {
+      "id": "zh_mega_walls_walls_fall_timer",
+      "type": "game_mode",
+      "pattern": "^巨墙将在(?<minutes>\\d+)分钟后倒塌[。！]?$",
+      "payload": {
+        "gameMode": "mega_walls"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 73
+    },
+    {
+      "id": "zh_mega_walls_wither_objective",
+      "type": "game_mode",
+      "pattern": "^摧毁敌方凋灵并消灭其他所有队伍！$",
+      "payload": {
+        "gameMode": "mega_walls"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 74
+    },
+    {
+      "id": "mega_walls_protected_chest",
+      "type": "game_mode",
+      "pattern": "^You broke your protected chest!?$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "mega_walls"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 75
+    },
+    {
+      "id": "mega_walls_castle_protection",
+      "type": "game_mode",
+      "pattern": "^You cannot modify the castles!?$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "mega_walls"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 76
+    },
+    {
+      "id": "zh_mega_walls_mode",
+      "type": "game_mode",
+      "pattern": "^.*超级战墙.*$",
+      "payload": {
+        "gameMode": "mega_walls"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 119
+    }
+  ]
+}

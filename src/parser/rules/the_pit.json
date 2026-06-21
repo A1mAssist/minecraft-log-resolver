@@ -1,0 +1,357 @@
+{
+  "id": "the_pit",
+  "name": "Global The Pit",
+  "description": "Game-state and result signal rules for the_pit.",
+  "cleaners": [
+    {
+      "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "zh_hyt_pit_room_invite",
+      "type": "game_mode",
+      "pattern": "^.+?邀请您加入\\s+天坑乱斗\\s+房间\\s+点击这里\\s+加入！?$",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 1
+    },
+    {
+      "id": "pit_mode",
+      "type": "game_mode",
+      "pattern": "^(?:The\\s+Pit|Pit)\\b.*$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 93
+    },
+    {
+      "id": "pit_level_up",
+      "type": "activity_diagnostic",
+      "pattern": "^PIT\\s+LEVEL\\s+UP!\\s+\\[(?<fromLevel>\\d+)\\]\\s+\\u279f\\s+\\[(?<toLevel>\\d+)\\]$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit",
+        "diagnosticKind": "level_up"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 92.5
+    },
+    {
+      "id": "pit_battle_entered",
+      "type": "game_mode",
+      "pattern": "^You\\s+have\\s+entered\\s+the\\s+Battle\\s+Pit\\.\\s+Good\\s+Luck!$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 94
+    },
+    {
+      "id": "pit_streak_broadcast",
+      "type": "game_mode",
+      "pattern": "^STREAK!\\s+of\\s+(?<streak>\\d+)\\s+kills?\\s+by\\s+\\[(?<level>\\d+)\\]\\s+(?<player>.+)$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 95
+    },
+    {
+      "id": "zh_pit_streak_broadcast",
+      "type": "game_mode",
+      "pattern": "^连杀！\\s*\\[(?<level>\\d+)\\]\\s*(?<player>.+?)达到了(?<streak>\\d+)连杀$",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 96
+    },
+    {
+      "id": "pit_megastreak_activated",
+      "type": "game_mode",
+      "pattern": "^MEGASTREAK!\\s+\\[(?<level>\\d+)\\]\\s+(?<player>.+?)\\s+activated\\s+(?<megastreak>.+?)(?:\\s+and\\s+exploded)?!$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 97
+    },
+    {
+      "id": "pit_death_streak_reward",
+      "type": "game_mode",
+      "pattern": "^DEATH\\s+STREAK!\\s+You\\s+gained\\s+(?:(?=.*\\+(?<gold>[0-9,]+)g\\b)(?=.*\\+(?<xp>[0-9,]+)\\s+XP\\b).+|.+)$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 98
+    },
+    {
+      "id": "pit_streak_points",
+      "type": "game_mode",
+      "pattern": "^\\+(?<points>\\d+)\\s+Streak\\s+Points\\s+\\(Kill\\)$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 99
+    },
+    {
+      "id": "pit_kill_reward",
+      "type": "activity_reward",
+      "pattern": "^(?:KILL|DOUBLE\\s+KILL|TRIPLE\\s+KILL)!\\s+on\\s+.+?\\s+\\+(?<xp>[0-9,]+)\\s*XP\\s+\\+(?<gold>[0-9,]+(?:\\.[0-9]+)?)g$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit",
+        "rewardKind": "kill"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 100
+    },
+    {
+      "id": "pit_assist_reward",
+      "type": "activity_reward",
+      "pattern": "^ASSIST!\\s+\\d+%\\s+on\\s+.+?\\s+\\+(?<xp>[0-9,]+)\\s*XP\\s+\\+(?<gold>[0-9,]+(?:\\.[0-9]+)?)g$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit",
+        "rewardKind": "assist"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 101
+    },
+    {
+      "id": "pit_gold_pickup",
+      "type": "activity_reward",
+      "pattern": "^GOLD\\s+PICKUP!\\s+from\\s+the\\s+ground\\s+(?<gold>[0-9,]+(?:\\.[0-9]+)?)g$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit",
+        "rewardKind": "gold_pickup"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 102
+    },
+    {
+      "id": "pit_free_xp",
+      "type": "activity_reward",
+      "pattern": "^FREE\\s+XP!\\s+for\\s+participation\\s+\\+(?<xp>[0-9,]+)\\s*XP$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit",
+        "rewardKind": "free_xp"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 103
+    },
+    {
+      "id": "pit_personal_rewards_summary",
+      "type": "activity_reward",
+      "pattern": "^Your\\s+rewards:\\s+\\+(?<xp>[0-9,]+)\\s*XP\\s+\\+(?<gold>[0-9,]+(?:\\.[0-9]+)?)g$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit",
+        "rewardKind": "summary"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 104
+    },
+    {
+      "id": "pit_streak_power_available",
+      "type": "game_mode",
+      "pattern": "^You\\s+have\\s+available\\s+streak\\s+powers!\\s+Visit\\s+the\\s+Streak\\s+NPC\\s+at\\s+spawn\\s+or\\s+click\\s+anywhere\\s+with\\s+your\\s+compass\\s+to\\s+activate\\s+them!$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 105
+    },
+    {
+      "id": "pit_streak_power_activated",
+      "type": "game_mode",
+      "pattern": "^(?<player>.+?)\\s+activated\\s+their\\s+(?<power>.+?)\\s+streak\\s+power!$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 106
+    },
+    {
+      "id": "pit_streak_power_worn_off",
+      "type": "game_mode",
+      "pattern": "^(?<player>.+?)'s\\s+streak\\s+power\\s+has\\s+worn\\s+off\\.$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 107
+    },
+    {
+      "id": "pit_kill_with_streak",
+      "type": "kill",
+      "pattern": "^(?<victim>.+?)\\s+was\\s+killed\\s+by\\s+(?<killer>.+?)!\\s+(?<streak>\\d+)\\s+KILL\\s+STREAK!$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 108
+    },
+    {
+      "id": "zh_hyt_pit_kill_by_attacker",
+      "type": "kill",
+      "pattern": "^(?<killer>[^()\\[\\]<>|]+?)\\s+击杀了\\s*(?<victim>[^()\\[\\]<>|]+?)\\s*!$",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 109
+    },
+    {
+      "id": "zh_hyt_pit_killed_by_inline",
+      "type": "kill",
+      "pattern": "^(?<victim>[^()\\[\\]<>|]+?)\\s+被\\s*(?<killer>[^()\\[\\]<>|]+?)\\s*击杀!?$",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 110
+    },
+    {
+      "id": "zh_hyt_pit_killed_by_comma",
+      "type": "kill",
+      "pattern": "^(?<victim>[^()\\[\\]<>|]+?)\\s+被(?<deathCause>击杀|射杀|干掉了|逼入了末路|塞进了戴维\\s*·\\s*琼斯的箱子)[,，]\\s*击杀者[:：]\\s*(?<killer>[^()\\[\\]<>|]+?)$",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 111
+    },
+    {
+      "id": "zh_hyt_pit_killed_by_custom_cause",
+      "type": "kill",
+      "pattern": "^(?<victim>[^()\\[\\]<>|]+?)\\s+(?<deathCause>输了一场饮酒比赛|不慎坠入了死亡的边缘)[,，]\\s*击杀者[:：]\\s*(?<killer>[^()\\[\\]<>|]+?)$",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 112
+    },
+    {
+      "id": "zh_hyt_pit_kill_streak",
+      "type": "game_mode",
+      "pattern": "^(?<player>[^()\\[\\]<>|]+?)\\s+完成了\\s*(?<streak>\\d+)\\s*连杀!?$",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 113
+    },
+    {
+      "id": "pit_player_on_kill_streak",
+      "type": "game_mode",
+      "pattern": "^(?<player>.+?)\\s+is\\s+on\\s+a\\s+(?<streak>\\d+)\\s+KILL\\s+STREAK!$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 114
+    },
+    {
+      "id": "pit_bounty_created",
+      "type": "activity_diagnostic",
+      "pattern": "^BOUNTY!\\s+of\\s+(?<gold>[0-9,]+)g\\s+on\\s+\\[(?<level>\\d+)\\]\\s+(?<player>.+?)\\s+for\\s+high\\s+streak$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit",
+        "diagnosticKind": "bounty_created"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 115
+    },
+    {
+      "id": "pit_bounty_bump",
+      "type": "activity_diagnostic",
+      "pattern": "^BOUNTY!\\s+bump\\s+(?<gold>[0-9,]+)g\\s+on\\s+\\[(?<level>\\d+)\\]\\s+(?<player>.+?)\\s+for\\s+high\\s+streak$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit",
+        "diagnosticKind": "bounty_bump"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 116
+    },
+    {
+      "id": "pit_bounty_claimed",
+      "type": "activity_diagnostic",
+      "pattern": "^BOUNTY\\s+CLAIMED!\\s+\\[(?<killerLevel>\\d+)\\]\\s+(?<killer>.+?)\\s+killed\\s+\\[(?<victimLevel>\\d+)\\]\\s+(?<victim>.+?)\\s+for\\s+(?<gold>[0-9,]+)g$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit",
+        "diagnosticKind": "bounty_claimed"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 117
+    },
+    {
+      "id": "pit_prestige_broadcast",
+      "type": "activity_diagnostic",
+      "pattern": "^PRESTIGE!\\s+(?<player>.+?)\\s+unlocked\\s+(?<prestige>prestige\\s+[IVXLCDM]+),\\s+gg!$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit",
+        "diagnosticKind": "prestige_broadcast"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 118
+    },
+    {
+      "id": "zh_pit_minor_event_rewards_active",
+      "type": "activity_diagnostic",
+      "pattern": "^\\u5c0f\\u578b\\u4e71\\u6597\\u4e8b\\u4ef6\\uff01\\s*(?<area>.+?)\\u533a\\u57df\\u6b63\\u5728\\u8fdb\\u884c(?<eventName>2X\\s+REWARDS)[,\\uff0c]\\s*(?:\\u8fd8\\u5269|\\u5269\\u4f59)(?<minutes>\\d+)\\u5206\\u949f$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit",
+        "diagnosticKind": "minor_event_rewards_active"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 119
+    },
+    {
+      "id": "zh_pit_minor_event_rewards_ended",
+      "type": "activity_diagnostic",
+      "pattern": "^(?<area>.+?)\\u533a\\u57df\\u7684\\u5c0f\\u578b\\u4e71\\u6597\\u4e8b\\u4ef6\\uff01(?<eventName>2X\\s+REWARDS)\\u5df2\\u7ed3\\u675f$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "the_pit",
+        "diagnosticKind": "minor_event_rewards_ended"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 120
+    }
+  ]
+}

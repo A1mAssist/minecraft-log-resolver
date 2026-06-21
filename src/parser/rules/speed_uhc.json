@@ -1,0 +1,33 @@
+{
+  "id": "speed_uhc",
+  "name": "Global Speed UHC",
+  "description": "Game-state and result signal rules for speed_uhc.",
+  "cleaners": [
+    {
+      "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "speed_uhc_mode",
+      "type": "game_mode",
+      "pattern": "^(?:Speed\\s*UHC|速度\\s*UHC|极速\\s*UHC|速战极限生存)$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "speed_uhc"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 61
+    }
+  ]
+}

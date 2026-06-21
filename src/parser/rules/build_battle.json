@@ -1,0 +1,33 @@
+{
+  "id": "build_battle",
+  "name": "Global Build Battle",
+  "description": "Game-state and result signal rules for build_battle.",
+  "cleaners": [
+    {
+      "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "build_battle_mode",
+      "type": "game_mode",
+      "pattern": "^(?:Build Battle(?:\\s+(?:Solo|Teams|Pro\\s+Mode|Guess\\s+The\\s+Build))?|建筑大师|建筑比赛)\\s*$",
+      "flags": "i",
+      "payload": {
+        "gameMode": "build_battle"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 111
+    }
+  ]
+}

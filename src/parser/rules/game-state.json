@@ -1,0 +1,479 @@
+{
+  "id": "game-state",
+  "name": "Global Game Common",
+  "description": "Shared game state, result, boundary, lobby, and generic server signal rules.",
+  "cleaners": [
+    {
+      "pattern": "^\\[(?!(?:起床战争|空岛战争|天空之战|超级战墙|迷你战墙|UHC|IRC)\\])[^\\]]+\\]\\s*",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:\\[(?!(?:UHC|IRC)\\])[A-Z]+\\]\\s*)+",
+      "flags": "i",
+      "replacement": ""
+    },
+    {
+      "pattern": "^(?:花雨庭\\s*)?>>\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "client_irc_prefix",
+      "type": "ignore",
+      "pattern": "^\\[IRC\\](?:\\s|:|$).*$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 2
+    },
+    {
+      "id": "zh_server_room_invite_click_here",
+      "type": "ignore",
+      "pattern": "^.+?邀请您加入\\s+.+?\\s+房间\\s+点击这里\\s+加入！?$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 3
+    },
+    {
+      "id": "zh_server_charm_entrance_broadcast",
+      "type": "ignore",
+      "pattern": "^玩家\\s+.+?\\s+一出场就已经震撼到了全服!\\s+\\??\\s*魅力值\\+\\d+$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 4
+    },
+    {
+      "id": "zh_rank_system_broadcast",
+      "type": "ignore",
+      "pattern": "^段位系统\\s*>>\\s+.+$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 5
+    },
+    {
+      "id": "zh_server_mount_arrival_broadcast",
+      "type": "ignore",
+      "pattern": "^.+?\\s+.+?来到了服务器$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 6
+    },
+    {
+      "id": "zh_player_punished_for_abnormal_behavior",
+      "type": "player_punished",
+      "pattern": "^(?:[?？!！*·•●○■□▶▷➤»>\\-]+\\s*)?玩家\\s*(?<player>.+?)\\s*在本局游戏中行为异常\\s*[,，]\\s*已被踢出游戏并封禁处罚[。.!！]?$",
+      "payload": {
+        "reason": "abnormal_behavior_ban"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 7
+    },
+    {
+      "id": "victory_title",
+      "type": "win",
+      "pattern": "^VICTORY!?$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 8
+    },
+    {
+      "id": "you_won",
+      "type": "win",
+      "pattern": "^(?:You won|You are the winner|Winner)!?$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 9
+    },
+    {
+      "id": "you_won_click_here",
+      "type": "win",
+      "pattern": "^You won!\\s+Want to play again\\?\\s+Click here!$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 10
+    },
+    {
+      "id": "zh_win",
+      "type": "win",
+      "pattern": "^(?:胜利|你赢了|你获胜了|恭喜你获胜)[!！。]?$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 12
+    },
+    {
+      "id": "defeat_title",
+      "type": "loss",
+      "pattern": "^DEFEAT!?$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 13
+    },
+    {
+      "id": "you_lost",
+      "type": "loss",
+      "pattern": "^(?:You lost|You lose|You have lost)!?$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 14
+    },
+    {
+      "id": "you_died_play_again",
+      "type": "loss",
+      "pattern": "^You died!\\s+Want to play again\\?\\s+Click here!$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 16
+    },
+    {
+      "id": "you_died_spectate_compass",
+      "type": "loss",
+      "pattern": "^You died,\\s+use your compass to spectate players!$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 17
+    },
+    {
+      "id": "you_died_now_spectator",
+      "type": "loss",
+      "pattern": "^You have died!\\s+You are now a spectator\\.?$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 18
+    },
+    {
+      "id": "zh_clay_now_spectator",
+      "type": "self_death",
+      "pattern": "^(?:Clay\\s*\\|\\s*)?你现在是观察者，可以使用快捷栏中的物品操作[!！。]?$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 19
+    },
+    {
+      "id": "you_are_now_ghost",
+      "type": "self_death",
+      "pattern": "^You are now a ghost\\.?$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 20
+    },
+    {
+      "id": "zh_you_died_play_again",
+      "type": "loss",
+      "pattern": "^你死了！\\s*想再来一局吗？\\s*点击这里！$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 21
+    },
+    {
+      "id": "you_permanently_died_play_again",
+      "type": "loss",
+      "pattern": "^You have permanently died!\\s+Want to play again\\?\\s+Click here!$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 22
+    },
+    {
+      "id": "zh_you_permanently_died_play_again",
+      "type": "loss",
+      "pattern": "^你已经永久死亡了！\\s*想再来一局吗？\\s*点击这里！$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 23
+    },
+    {
+      "id": "zh_you_died_spectate_compass",
+      "type": "loss",
+      "pattern": "^你死了，\\s*用你的指南针来观察剩余的玩家！$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 24
+    },
+    {
+      "id": "you_were_eliminated",
+      "type": "loss",
+      "pattern": "^(?:You (?:have been|were) eliminated|You are eliminated)!?$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 25
+    },
+    {
+      "id": "zh_loss",
+      "type": "loss",
+      "pattern": "^(?:失败|你输了|你战败了|游戏失败)[!！。]?$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 26
+    },
+    {
+      "id": "zh_clay_round_loss",
+      "type": "loss",
+      "pattern": "^(?:Clay\\s*\\|\\s*)?很遗憾，你输掉了本场比赛[!！。]?$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 27
+    },
+    {
+      "id": "zh_you_eliminated",
+      "type": "loss",
+      "pattern": "^(?:你已被淘汰|你被淘汰了|你已出局)[!！。]?$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 28
+    },
+    {
+      "id": "zh_generic_coin_win_reward",
+      "type": "win",
+      "pattern": "^\\+?\\d+\\s*硬币！\\s*\\(获胜\\)$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 35
+    },
+    {
+      "id": "en_generic_coin_win_reward",
+      "type": "win",
+      "pattern": "^\\+?\\d+\\s+coins!\\s+(?:\\([^)]*\\)\\s*)*\\(Win\\)$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 36
+    },
+    {
+      "id": "en_generic_token_win_reward",
+      "type": "win",
+      "pattern": "^\\+?\\d+\\s+tokens!\\s+(?:\\([^)]*\\)\\s*)*\\(Win\\)$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 37
+    },
+    {
+      "id": "zh_task_progress_update",
+      "type": "task_progress",
+      "pattern": "^任务系统\\s*>\\s*任务进度更新\\s*(?<current>\\d+)\\s*/\\s*(?<total>\\d+)\\s*\\[(?<task>[^\\]·]+)(?:·(?<period>[^\\]]+))?\\]$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 38
+    },
+    {
+      "id": "game_over",
+      "type": "round_end",
+      "pattern": "^GAME OVER!?$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 46
+    },
+    {
+      "id": "you_placed",
+      "type": "round_end",
+      "pattern": "^You placed #(?<placement>\\d+)!?$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 47
+    },
+    {
+      "id": "zh_placement",
+      "type": "round_end",
+      "pattern": "^你(?:的)?排名[:：]?\\s*#?(?<placement>\\d+)[!！。]?$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 48
+    },
+    {
+      "id": "winner_announcement",
+      "type": "round_end",
+      "pattern": "^(?:Winner|Winners|Winning Team):\\s*(?<winner>.+)$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 49
+    },
+    {
+      "id": "winner_announcement_dash",
+      "type": "round_end",
+      "pattern": "^(?:Winner|Winners)\\s+-\\s+(?<winner>.+)$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 50
+    },
+    {
+      "id": "zh_color_winning_team",
+      "type": "round_end",
+      "pattern": "^(?:胜利队伍|获胜队伍)[:：]\\s*(?<winner>红|蓝|绿|黄|青|白|粉|灰|紫|橙)(?:色)?(?:之?队队|之?队伍|之?队)?[!！]?$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 51
+    },
+    {
+      "id": "zh_winner_announcement",
+      "type": "round_end",
+      "pattern": "^(?:获胜者|胜利者|获胜队伍)[:：]\\s*(?<winner>.+)$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 52
+    },
+    {
+      "id": "zh_winner_plain",
+      "type": "round_end",
+      "pattern": "^胜利者\\s+(?<winner>.+)$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 53
+    },
+    {
+      "id": "zh_winning_team",
+      "type": "round_end",
+      "pattern": "^胜利队伍[:：]\\s*(?<winner>.+)$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 54
+    },
+    {
+      "id": "zh_player_won_on_map",
+      "type": "round_end",
+      "pattern": "^(?<winner>.+?)\\s+在地图\\s+(?<map>.+?)\\s+中取得了一场游戏的胜利$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 55
+    },
+    {
+      "id": "zh_team_win_pipe",
+      "type": "round_end",
+      "pattern": "^.+?\\s+\\|\\s+(?<winner>.+?队)\\s*获得胜利[!！]?$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 58
+    },
+    {
+      "id": "generic_zh_game_countdown",
+      "type": "round_countdown",
+      "pattern": "^(?:Clay\\s*\\|\\s*)?游戏将在\\s*(?<seconds>\\d+)\\s*秒\\s*后开始[!！]?$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 59
+    },
+    {
+      "id": "generic_en_game_countdown",
+      "type": "round_countdown",
+      "pattern": "^The game starts in (?<seconds>\\d+) seconds?!?$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 62
+    },
+    {
+      "id": "zh_world_switch",
+      "type": "world_switch",
+      "pattern": "^正在前往(?<destination>.+?)！$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 63
+    },
+    {
+      "id": "english_world_switch",
+      "type": "world_switch",
+      "pattern": "^Sending you to (?<destination>.+?)!$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 64
+    },
+    {
+      "id": "english_lobby_teleport",
+      "type": "lobby_signal",
+      "pattern": "^Teleporting you to the lobby in (?<seconds>\\d+) seconds\\.\\.\\. Right-click again to cancel the teleport!$",
+      "flags": "i",
+      "payload": {
+        "reason": "lobby_teleport"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 65
+    },
+    {
+      "id": "zh_returning_lobby",
+      "type": "lobby_signal",
+      "pattern": "^(?:Clay\\s*\\|\\s*)?正在返回大厅[.!！。]?$",
+      "payload": {
+        "reason": "returning_lobby"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 66
+    },
+    {
+      "id": "zh_unread_mail_lobby",
+      "type": "lobby_signal",
+      "pattern": "^你有\\s*(?<mails>\\d+)\\s*封未读邮件[.!！。]?$",
+      "payload": {
+        "reason": "unread_mail"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 67
+    },
+    {
+      "id": "english_unclaimed_leveling_reward",
+      "type": "lobby_signal",
+      "pattern": "^You have (?<rewards>\\d+) unclaimed leveling rewards?!$",
+      "flags": "i",
+      "payload": {
+        "reason": "leveling_reward"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 68
+    },
+    {
+      "id": "english_player_joined_lobby",
+      "type": "lobby_signal",
+      "pattern": "^(?:>+\\s*)?(?:\\[[^\\]]+\\]\\s*)*(?<player>[A-Za-z0-9_]{1,16}) joined the lobby!\\s*(?:<<<)?$",
+      "flags": "i",
+      "payload": {
+        "reason": "player_joined_lobby"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 69
+    },
+    {
+      "id": "generic_en_player_join_count",
+      "type": "player_join",
+      "pattern": "^(?<player>.+?) has joined \\((?<players>\\d+)/(?<maxPlayers>\\d+)\\)!$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 70
+    },
+    {
+      "id": "generic_zh_player_join_count",
+      "type": "player_join",
+      "pattern": "^(?<player>.+?)加入了游戏（(?<players>\\d+)/(?<maxPlayers>\\d+)）！$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 81
+    },
+    {
+      "id": "english_team_assignment",
+      "type": "team_assignment",
+      "pattern": "^(?:(?:You are on|You joined|You are now on) (?:the )?(?<team>Red|Blue|Green|Yellow|Aqua|White|Pink|Gray|Grey) Team!?|The game has started! You're on team (?<teamStart>RED|BLUE|GREEN|YELLOW|AQUA|WHITE|PINK|GRAY|GREY), the walls will fall down in 10 minutes\\.)$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 82
+    },
+    {
+      "id": "zh_team_assignment",
+      "type": "team_assignment",
+      "pattern": "^(?:起床战争\\s*>>?\\s*)?(?:你(?:现在)?(?:是|加入了?)|你成功加入了|你被分配到)\\s*(?<team>红|蓝|绿|黄|青|白|粉|灰|紫|橙)(?:色)?(?:之?队队|之?队伍|之?队)?[!！。]?$",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 83
+    },
+    {
+      "id": "zh_joined_english_team_side",
+      "type": "team_assignment",
+      "pattern": "^你加入了(?<team>Red|Blue|Green|Yellow|Aqua|White|Pink|Gray|Grey)一方！$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 84
+    },
+    {
+      "id": "generic_hypixel_team_chat",
+      "type": "team_chat",
+      "pattern": "^\\[(?<team>RED|BLUE|GREEN|YELLOW|AQUA|WHITE|PINK|GRAY|GREY)\\]\\s+(?:\\[[^\\]]+\\]\\s*)*(?<player>[A-Za-z0-9_]{1,16})\\s*:\\s*(?<message>.+)$",
+      "flags": "i",
+      "cleaners": [],
+      "payload": {
+        "chatScope": "team"
+      },
+      "legacyRuleSet": "game-state",
+      "matchOrder": 84.5
+    },
+    {
+      "id": "english_winning_team",
+      "type": "round_end",
+      "pattern": "^(?:(?:Winner|Winning Team):|Winning Team\\s+-)\\s*(?<winner>Red|Blue|Green|Yellow|Aqua|White|Pink|Gray|Grey)(?: Team)?!?$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 85
+    },
+    {
+      "id": "tnt_games_mode",
+      "type": "game_mode",
+      "pattern": "^(?:(?<gameMode>TNT Run|TNT Tag|Bow Spleef)|TNT Games)\\b.*$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 112
+    },
+    {
+      "id": "arcade_mode",
+      "type": "game_mode",
+      "pattern": "^(?:Arcade Games?|Mini Walls|Zombies|Party Games|Dragon Wars|Hide and Seek|Dropper)\\b.*$",
+      "flags": "i",
+      "legacyRuleSet": "game-state",
+      "matchOrder": 113
+    }
+  ]
+}

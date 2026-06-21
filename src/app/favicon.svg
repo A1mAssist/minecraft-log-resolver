@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="MC Log Analytics">
+  <defs>
+    <linearGradient id="shell" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#101820"/>
+      <stop offset="0.58" stop-color="#0b1118"/>
+      <stop offset="1" stop-color="#070b0f"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="12" y1="10" x2="52" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2bd47f"/>
+      <stop offset="1" stop-color="#0f5f3b"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#080d11"/>
+  <rect x="5" y="5" width="54" height="54" rx="12" fill="url(#shell)" stroke="#1a2a34" stroke-width="2"/>
+  <rect x="10" y="10" width="44" height="44" rx="8" fill="#0a1116" stroke="url(#edge)" stroke-opacity=".3" stroke-width="2"/>
+  <rect x="12" y="12" width="7" height="7" rx="1.1" fill="#58e39a"/>
+  <rect x="23" y="12" width="7" height="7" rx="1.1" fill="#37c982"/>
+  <rect x="34" y="12" width="7" height="7" rx="1.1" fill="#14824f"/>
+  <rect x="45" y="12" width="7" height="7" rx="1.1" fill="#37c982"/>
+  <rect x="12" y="23" width="7" height="7" rx="1.1" fill="#37c982"/>
+  <rect x="23" y="23" width="7" height="7" rx="1.1" fill="#14824f"/>
+  <rect x="34" y="23" width="7" height="7" rx="1.1" fill="#58e39a"/>
+  <rect x="45" y="23" width="7" height="7" rx="1.1" fill="#0f5f3b"/>
+  <rect x="12" y="34" width="7" height="7" rx="1.1" fill="#14824f"/>
+  <rect x="23" y="34" width="7" height="7" rx="1.1" fill="#58e39a"/>
+  <rect x="34" y="34" width="7" height="7" rx="1.1" fill="#37c982"/>
+  <rect x="45" y="34" width="7" height="7" rx="1.1" fill="#14824f"/>
+  <rect x="12" y="45" width="7" height="7" rx="1.1" fill="#37c982"/>
+  <rect x="23" y="45" width="7" height="7" rx="1.1" fill="#0f5f3b"/>
+  <rect x="34" y="45" width="7" height="7" rx="1.1" fill="#58e39a"/>
+  <rect x="45" y="45" width="7" height="7" rx="1.1" fill="#37c982"/>
+</svg>

@@ -1,0 +1,15 @@
+{
+  "roots": [
+    "D:\\Games\\Example\\.minecraft"
+  ],
+  "owner": {
+    "aliases": [
+      "YourServerNick",
+      "YourOfflineName"
+    ]
+  },
+  "app": {
+    "dataDir": "data",
+    "skinProxyEnabled": true
+  }
+}

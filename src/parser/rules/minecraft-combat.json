@@ -1,0 +1,73 @@
+{
+  "id": "minecraft-combat",
+  "name": "Global Minecraft Combat",
+  "description": "跨服务器/原版 Minecraft 常见击杀和死亡消息。",
+  "cleaners": [
+    {
+      "pattern": "^\\[[^\\]]+\\]\\s*",
+      "replacement": ""
+    }
+  ],
+  "rules": [
+    {
+      "id": "slain_by",
+      "type": "kill",
+      "pattern": "^(?<victim>.+?) was slain by (?<killer>.+?)(?: using \\[.+\\])?$",
+      "flags": "i"
+    },
+    {
+      "id": "shot_by",
+      "type": "kill",
+      "pattern": "^(?<victim>.+?) was shot by (?<killer>.+?)$",
+      "flags": "i"
+    },
+    {
+      "id": "shot_and_killed_by",
+      "type": "kill",
+      "pattern": "^(?<victim>.+?) was shot and killed by (?<killer>.+?)$",
+      "flags": "i"
+    },
+    {
+      "id": "blown_up_by",
+      "type": "kill",
+      "pattern": "^(?<victim>.+?) was blown up by (?<killer>.+?)$",
+      "flags": "i"
+    },
+    {
+      "id": "generic_player_kill",
+      "type": "kill",
+      "pattern": "^(?<victim>.+?) was killed by (?<killer>.+?)$",
+      "flags": "i"
+    },
+    {
+      "id": "void_death",
+      "type": "death",
+      "pattern": "^(?<victim>.+?) fell out of the world$",
+      "flags": "i"
+    },
+    {
+      "id": "fall_death",
+      "type": "death",
+      "pattern": "^(?<victim>.+?) hit the ground too hard$",
+      "flags": "i"
+    },
+    {
+      "id": "lava_death",
+      "type": "death",
+      "pattern": "^(?<victim>.+?) tried to swim in lava$",
+      "flags": "i"
+    },
+    {
+      "id": "drowned",
+      "type": "death",
+      "pattern": "^(?<victim>.+?) drowned$",
+      "flags": "i"
+    },
+    {
+      "id": "burned",
+      "type": "death",
+      "pattern": "^(?<victim>.+?) burned to death$",
+      "flags": "i"
+    }
+  ]
+}
