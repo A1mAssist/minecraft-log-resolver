@@ -157,6 +157,14 @@ npm.cmd run build:local-desktop -- --embed-node current
 
 The embedded runtime is copied to `dist/local-desktop/runtime/node/node.exe`, and `start.bat` prefers it before falling back to `node` from `PATH`.
 
+Build a Windows double-click launcher:
+
+```bat
+npm.cmd run build:windows-exe
+```
+
+The bundle is written to `dist/local-desktop` and includes `MinecraftLogObservatory.exe`. The executable starts the local API and static dashboard directly; users do not run npm.
+
 The first-run flow is the same in the bundle: choose or paste a root, validate it, save it through `/api/config`, then refresh to generate derived data.
 
 Derived-data cleanup:

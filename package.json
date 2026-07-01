@@ -37,6 +37,7 @@
     "activity:review": "node scripts/export-activity-review.mjs",
     "performance:baseline": "node scripts/performance-baseline.mjs",
     "build:local-desktop": "node scripts/build-local-desktop.mjs",
+    "build:windows-exe": "node scripts/build-windows-exe.mjs",
     "release:notes": "node scripts/release-notes.mjs",
     "release:check": "node scripts/release-check.mjs",
     "test": "npm run test:rules && npm run test:custom-rules && npm run test:audit-export && npm run test:core && npm run test:config && npm run test:report -- report-combined.json && npm run test:summary -- report-combined-summary.json && npm run test:api && npm run test:api-server && npm run test:doctor && npm run test:store && npm run test:openapi && npm run test:rule-quality-baseline && npm run test:release-check && npm run test:local-desktop-build && npm run test:local-desktop-runtime && npm run test:frontend",
@@ -59,5 +60,8 @@
     "test:local-desktop-runtime": "node scripts/test-local-desktop-runtime.mjs",
     "test:frontend": "node scripts/test-frontend.mjs",
     "verify:report-cache": "node scripts/verify-report-cache.mjs"
+  },
+  "devDependencies": {
+    "postject": "^1.0.0-alpha.6"
   }
 }
