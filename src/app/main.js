@@ -1572,7 +1572,7 @@ function visibleRefresh(refresh) {
 }
 
 async function getJson(path) {
-  const response = await fetch(path);
+  const response = await apiFetch(path);
   if (!response.ok) {
     let detail = null;
     try {
@@ -1597,7 +1597,7 @@ async function getOptionalJson(path, fallback = null) {
 }
 
 async function postJson(path, body = {}) {
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -1607,7 +1607,7 @@ async function postJson(path, body = {}) {
 }
 
 async function putJson(path, body = {}) {
-  const response = await fetch(path, {
+  const response = await apiFetch(path, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -1617,9 +1617,45 @@ async function putJson(path, body = {}) {
 }
 
 async function deleteJson(path) {
-  const response = await fetch(path, { method: "DELETE" });
+  const response = await apiFetch(path, { method: "DELETE" });
   if (!response.ok) throw await apiRequestError(path, response);
   return response.json();
+}
+
+async function apiFetch(path, options = {}) {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (invoke && typeof path === "string" && path.startsWith("/api/")) {
+    const response = await invoke("api_request", {
+      request: {
+        method: options.method ?? "GET",
+        url: path,
+        body: parseRequestBody(options.body),
+      },
+    });
+    return tauriApiResponse(response);
+  }
+  return fetch(path, options);
+}
+
+function parseRequestBody(body) {
+  if (body === undefined || body === null || body === "") return {};
+  if (typeof body !== "string") return body;
+  try {
+    return JSON.parse(body);
+  } catch {
+    return body;
+  }
+}
+
+function tauriApiResponse(response) {
+  const status = response?.status ?? 500;
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: response?.headers ?? {},
+    json: async () => response?.body ?? null,
+    text: async () => JSON.stringify(response?.body ?? null),
+  };
 }
 
 async function apiRequestError(path, response) {

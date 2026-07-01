@@ -1,6 +1,6 @@
 {
   "name": "minecraft-log-observatory",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -36,6 +36,10 @@
     "result:by-hint": "node scripts/export-unknown-by-hint-samples.mjs",
     "activity:review": "node scripts/export-activity-review.mjs",
     "performance:baseline": "node scripts/performance-baseline.mjs",
+    "build:tauri-frontend": "node scripts/build-tauri-frontend.mjs",
+    "build:tauri-portable": "node scripts/build-tauri-portable.mjs",
+    "tauri:build": "tauri build",
+    "tauri:dev": "tauri dev",
     "build:local-desktop": "node scripts/build-local-desktop.mjs",
     "build:windows-exe": "node scripts/build-windows-exe.mjs",
     "release:notes": "node scripts/release-notes.mjs",
@@ -62,6 +66,8 @@
     "verify:report-cache": "node scripts/verify-report-cache.mjs"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "@tauri-apps/cli-win32-x64-msvc": "^2.11.4",
     "postject": "^1.0.0-alpha.6"
   }
 }

@@ -165,6 +165,15 @@ npm.cmd run build:windows-exe
 
 The bundle is written to `dist/local-desktop` and includes `MinecraftLogObservatory.exe`. The executable starts the local API and static dashboard directly; users do not run npm.
 
+Build the no-port Tauri desktop bundle:
+
+```bat
+npm.cmd run tauri:build -- --no-bundle
+npm.cmd run build:tauri-portable
+```
+
+The bundle is written to `dist/tauri-desktop` and includes `MinecraftLogObservatory.exe`. This edition uses Tauri IPC between the WebView UI and the local backend bridge, so it does not bind `127.0.0.1` HTTP ports.
+
 The first-run flow is the same in the bundle: choose or paste a root, validate it, save it through `/api/config`, then refresh to generate derived data.
 
 Derived-data cleanup:
