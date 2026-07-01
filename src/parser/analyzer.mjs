@@ -1,4 +1,4 @@
-import { discoverLogFiles, discoverScopes } from "./discovery.mjs";
+import { discoverLogFiles, discoverMinecraftLogScopes, discoverScopes } from "./discovery.mjs";
 import { eventTypes, extractEvents, hasEventSignal } from "./events.mjs";
 import { parseLine } from "./lineParser.mjs";
 import { readLogLines } from "./reader.mjs";
@@ -12,14 +12,14 @@ function emptyEvents() {
 
 export async function analyzeMinecraftRoot(root, options = {}) {
   const scopeFilter = options.scope ? new Set(options.scope) : null;
-  let scopes = await discoverScopes(root);
-  if (scopeFilter) {
-    scopes = scopes.filter((scope) => scopeFilter.has(scope.scope));
-  }
+  let scopes = options.discoveredScopes
+    ? options.discoveredScopes.filter((scope) => scope.root === root)
+    : await discoverScopes(root);
+  if (scopeFilter) scopes = scopes.filter((scope) => scopeFilter.has(scope.scope));
   const summaries = [];
 
   for (const scope of scopes) {
-    const files = await discoverLogFiles(scope);
+    const files = scope.files ?? await discoverLogFiles(scope);
     options.onFilesDiscovered?.(files.length);
     const summary = {
       root: scope.root,
@@ -67,37 +67,86 @@ export async function analyzeMinecraftRoots(roots, options = {}) {
   const allSummaries = [];
   let filesDone = 0;
   let filesTotal = 0;
+
+  const discoveredScopes = options.discoveredScopes
+    ?? await discoverMinecraftLogScopes(roots, { scope: options.scope });
+  filesTotal = discoveredScopes.reduce((total, scope) => total + (scope.files?.length ?? 0), 0);
+  options.onProgress?.({
+    phase: "scan",
+    filesDone,
+    filesTotal,
+  });
+
   for (const root of roots) {
-    const summaries = await analyzeMinecraftRoot(root, {
-      ...options,
-      cache,
-      cacheSignature,
-      onFilesDiscovered: (count) => {
-        filesTotal += count;
-      },
-      onFileStart: (file) => {
-        options.onProgress?.({
-          phase: "scan",
-          currentFile: file.path,
-          filesDone,
-          filesTotal,
-        });
-      },
-      onFileDone: (file) => {
-        filesDone += 1;
-        options.onProgress?.({
-          phase: "scan",
-          currentFile: file.path,
-          filesDone,
-          filesTotal,
-        });
-      },
-    });
-    allSummaries.push(...summaries);
+    const rootScopes = discoveredScopes.filter((scope) => scope.root === root);
+    for (const scope of rootScopes) {
+      const files = scope.files ?? await discoverLogFiles(scope);
+      const summary = await analyzeMinecraftScope(scope, files, {
+        ...options,
+        cache,
+        cacheSignature,
+        onFileStart: (file) => {
+          options.onProgress?.({
+            phase: "scan",
+            currentFile: file.path,
+            filesDone,
+            filesTotal,
+          });
+        },
+        onFileDone: (file) => {
+          filesDone += 1;
+          options.onProgress?.({
+            phase: "scan",
+            currentFile: file.path,
+            filesDone,
+            filesTotal,
+          });
+        },
+      });
+      allSummaries.push(summary);
+    }
   }
   touchCache(cache);
   await saveParseCache(options.cachePath, cache);
   return allSummaries.sort((a, b) => b.events.chat_message - a.events.chat_message);
+}
+
+async function analyzeMinecraftScope(scope, files, options = {}) {
+  const summary = {
+    root: scope.root,
+    source: scope.source,
+    scope: scope.scope,
+    logFiles: files.length,
+    bytes: files.reduce((total, file) => total + file.size, 0),
+    latestModifiedMs: files.reduce((latest, file) => Math.max(latest, file.modifiedMs), 0),
+    events: emptyEvents(),
+    clientSessions: [],
+    playSegments: [],
+    transitionEvents: [],
+    cache: { hits: 0, misses: 0 },
+  };
+
+  for (const file of files) {
+    options.onFileStart?.(file, scope);
+    const cachedResult = options.cache ? getCachedFile(options.cache, file, options) : null;
+    const fileResult = cachedResult ?? (await analyzeLogFile(file, options));
+    if (cachedResult) {
+      summary.cache.hits += 1;
+    } else {
+      summary.cache.misses += 1;
+      if (options.cache) setCachedFile(options.cache, file, fileResult, options);
+    }
+
+    for (const eventType of eventTypes) {
+      summary.events[eventType] += fileResult.events[eventType] ?? 0;
+    }
+    summary.clientSessions.push(...fileResult.clientSessions);
+    summary.playSegments.push(...fileResult.playSegments);
+    summary.transitionEvents.push(...(fileResult.transitionEvents ?? []));
+    options.onFileDone?.(file, scope);
+  }
+
+  return summary;
 }
 
 async function analyzeLogFile(file, options = {}) {

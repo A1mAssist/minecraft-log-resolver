@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { analyzeMinecraftRoots } from "../src/parser/analyzer.mjs";
 import { analyzeChatEvents } from "../src/parser/chatEventAnalyzer.mjs";
+import { discoverMinecraftLogScopes, summarizeDiscoveredScopes } from "../src/parser/discovery.mjs";
 import { buildRoundsByFile } from "../src/parser/roundBuilder.mjs";
 import { buildReport, createReportSummary } from "../src/report/reportBuilder.mjs";
 import { loadAppConfig, resolveConfigPath } from "../src/config/appConfig.mjs";
@@ -45,13 +46,45 @@ if (!roots.length) {
 await maybeDelayForRefreshTest();
 maybeFailForRefreshTest();
 
+console.error("Discovering log files...");
+const discoveryStarted = process.hrtime.bigint();
+const discoveredScopes = await discoverMinecraftLogScopes(roots, {
+  scope: selectedScopes.length ? selectedScopes : null,
+});
+const discoveryDiagnostics = {
+  ...summarizeDiscoveredScopes(discoveredScopes),
+  durationMs: elapsedMs(discoveryStarted),
+};
+emitProgress({
+  phase: "scan",
+  message: "Discovered log files",
+  percent: 8,
+  filesDone: 0,
+  filesTotal: discoveryDiagnostics.files,
+  diagnostics: {
+    discovery: discoveryDiagnostics,
+  },
+});
+
 console.error("Analyzing sessions and playtime...");
 emitProgress({ phase: "scan", message: "Analyzing sessions and playtime", percent: 10 });
+const scanStarted = process.hrtime.bigint();
 const summaries = await analyzeMinecraftRoots(roots, {
   scope: selectedScopes.length ? selectedScopes : null,
   cachePath,
   encoding,
+  discoveredScopes,
   onProgress: emitProgress,
+});
+emitProgress({
+  phase: "scan",
+  message: "Analyzed sessions and playtime",
+  percent: 32,
+  filesDone: discoveryDiagnostics.files,
+  filesTotal: discoveryDiagnostics.files,
+  diagnostics: {
+    scan: summarizeSessionScanDiagnostics(summaries, elapsedMs(scanStarted)),
+  },
 });
 
 console.error("Analyzing chat events and rule coverage...");
@@ -64,8 +97,19 @@ const eventResult = await analyzeChatEvents(roots, {
   unmatchedTemplatesLimit,
   cachePath: chatCachePath,
   chatLinesCachePath,
+  discoveredScopes,
   ownerAliases: config.owner.aliases,
   onProgress: emitProgress,
+});
+emitProgress({
+  phase: "parse",
+  message: "Analyzed chat events and rule coverage",
+  percent: 64,
+  filesDone: discoveryDiagnostics.files,
+  filesTotal: discoveryDiagnostics.files,
+  diagnostics: eventResult.diagnostics ?? {
+    chatEvents: eventResult.totals ?? null,
+  },
 });
 
 console.error("Building rounds and final report...");
@@ -122,6 +166,22 @@ function emitProgress(progress) {
 
 function readRepeatedOption(name) {
   return args.flatMap((arg, index) => (arg === name ? [args[index + 1]] : [])).filter(Boolean);
+}
+
+function elapsedMs(started) {
+  return Number((process.hrtime.bigint() - started) / 1_000_000n);
+}
+
+function summarizeSessionScanDiagnostics(summaries, durationMs) {
+  return {
+    scopes: summaries.length,
+    files: summaries.reduce((total, summary) => total + (summary.logFiles ?? 0), 0),
+    bytes: summaries.reduce((total, summary) => total + (summary.bytes ?? 0), 0),
+    cacheHits: summaries.reduce((total, summary) => total + (summary.cache?.hits ?? 0), 0),
+    cacheMisses: summaries.reduce((total, summary) => total + (summary.cache?.misses ?? 0), 0),
+    cacheSkippedFiles: summaries.reduce((total, summary) => total + (summary.cache?.hits ?? 0), 0),
+    durationMs,
+  };
 }
 
 async function maybeDelayForRefreshTest() {

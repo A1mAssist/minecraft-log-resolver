@@ -50,11 +50,20 @@ const outputs = {
   report: await jsonFileSummary(reportPath),
   summary: await jsonFileSummary(summaryPath),
 };
-const needsRefresh = !outputs.report.exists || !outputs.summary.exists || !store.ready;
+outputs.consistency = buildDerivedOutputsConsistency({
+  report: outputs.report,
+  summary: outputs.summary,
+  store,
+});
+store.reportMatchesStore = outputs.consistency.reportMatchesStore;
+store.outOfSync = outputs.consistency.storeOutOfSync;
+const needsRefresh = !outputs.report.exists || !outputs.summary.exists || !store.ready || outputs.consistency.outOfSync;
 const refreshReasons = [
   ...(!outputs.report.exists ? ["report_not_ready"] : []),
   ...(!outputs.summary.exists ? ["summary_not_ready"] : []),
   ...(!store.ready ? ["store_not_ready"] : []),
+  ...(outputs.consistency.summaryOutOfSync ? ["summary_out_of_sync"] : []),
+  ...(outputs.consistency.storeOutOfSync ? ["store_out_of_sync"] : []),
 ];
 const previousBaseline = await readJsonOptional(previousPath);
 
@@ -224,4 +233,23 @@ function readRepeatedOption(name) {
 
 function hasFlag(name) {
   return args.includes(name);
+}
+
+function buildDerivedOutputsConsistency({ report, summary, store }) {
+  const reportReady = Boolean(report?.exists && !report.jsonError && report.generatedAt);
+  const summaryReady = Boolean(summary?.exists && !summary.jsonError && summary.generatedAt);
+  const storeReady = Boolean(store?.ready && store.reportGeneratedAt);
+  const summaryOutOfSync = Boolean(reportReady && summaryReady && summary.generatedAt !== report.generatedAt);
+  const storeOutOfSync = Boolean(reportReady && storeReady && store.reportGeneratedAt !== report.generatedAt);
+  return {
+    reportGeneratedAt: report?.generatedAt ?? null,
+    summaryGeneratedAt: summary?.generatedAt ?? null,
+    storeGeneratedAt: store?.generatedAt ?? null,
+    storeReportGeneratedAt: store?.reportGeneratedAt ?? null,
+    summaryMatchesReport: reportReady && summaryReady ? !summaryOutOfSync : null,
+    reportMatchesStore: reportReady && storeReady ? !storeOutOfSync : null,
+    summaryOutOfSync,
+    storeOutOfSync,
+    outOfSync: summaryOutOfSync || storeOutOfSync,
+  };
 }

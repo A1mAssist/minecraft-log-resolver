@@ -525,10 +525,15 @@ export function buildActivity(summaries, events, chatLines = []) {
   const serverHints = buildProxiedServerHints(playSegments, events, chatLines);
   const eventsByFile = groupByFile(events);
   const chatLinesByFile = groupByFile(chatLines);
+  const clientSessions = buildClientSessionRefs(summaries);
+  const clientSessionsByKey = groupClientSessionRefsByRoundLookupKey(clientSessions);
+  const resolvedContextsBySession = buildResolvedServerContextsBySession(clientSessions, eventsByFile, chatLinesByFile);
   const segments = [...byFile.values()]
     .flatMap((fileEvents) => buildActivitySegmentsForFile(fileEvents))
     .sort((a, b) => a.startMs - b.startMs || a.lineNo - b.lineNo)
     .map((segment) => enrichActivitySegment(annotateActivitySegmentWithServerContext(segment, {
+      clientSessionsByKey,
+      resolvedContextsBySession,
       playSegmentsByKey,
       serverHints,
       eventsByFile,
@@ -704,6 +709,8 @@ function applyActivityEvent(segment, event) {
       lineNo: event.lineNo,
       timeText: event.timeText ?? null,
       type: event.type,
+      ruleSet: event.ruleSet ?? null,
+      ruleId: event.ruleId ?? event.type,
       rule: `${event.ruleSet ?? "event"}:${event.ruleId ?? event.type}`,
       message: event.message ?? null,
       payload: event.payload ?? {},
@@ -2209,44 +2216,249 @@ function buildPlaySegmentIdentitySources(rounds, summaries) {
 
 function annotateRoundsWithServerContext(rounds, summaries = [], events = [], chatLines = []) {
   const annotated = rounds.map(cloneRoundForPropagation);
+  const clientSessions = buildClientSessionRefs(summaries);
+  const clientSessionsByRoundKey = groupClientSessionRefsByRoundLookupKey(clientSessions);
   const segments = buildMultiplayerPlaySegmentRefs(summaries);
   const segmentsByRoundKey = groupPlaySegmentRefsByRoundLookupKey(segments);
   const serverHints = buildProxiedServerHints(segments, events, chatLines);
+  const eventsByFile = groupByFile(events);
   const chatLinesByFile = groupByFile(chatLines);
+  const resolvedContextsBySession = buildResolvedServerContextsBySession(clientSessions, eventsByFile, chatLinesByFile);
+  const resolvedContextsBySegment = new Map();
 
   for (const round of annotated) {
+    const sessionMatch = (clientSessionsByRoundKey.get(roundLookupKey(round)) ?? [])
+      .find(({ summary, session }) => roundBelongsToClientSession(round, summary, session));
     const segmentMatch = (segmentsByRoundKey.get(roundLookupKey(round)) ?? [])
       .find(({ summary, segment }) => roundBelongsToPlaySegment(round, summary, segment));
-    if (segmentMatch && segmentMatch.segment.serverAddress) {
-      const { segment } = segmentMatch;
-      const directContext = buildDirectServerContext({
-        host: segment.serverHost ?? segment.serverAddress,
-        port: segment.serverPort ?? null,
-        address: segment.serverAddress,
-        text: segment.serverConnectMessage ?? null,
-        event: {
-          lineNo: segment.serverConnectLineNo ?? null,
-          timestampMs: segment.startMs ?? null,
-        },
-      });
-      Object.assign(round, proxiedOrDirectServerContext(directContext, serverHints.get(proxiedServerHintKey(segment))));
+    if (sessionMatch) {
+      const sessionKey = clientSessionContextKey(sessionMatch.summary, sessionMatch.session);
+      const existingContext = resolvedContextsBySession.get(sessionKey);
+      if (existingContext) {
+        Object.assign(round, serverContextWithLocalProxyAddress(existingContext, segmentMatch?.segment));
+        continue;
+      }
+    }
+
+    if (!segmentMatch) {
+      const chatContext = inferServerContextFromChatLines(filterRowsInRound(chatLinesByFile.get(round.filePath) ?? [], round));
+      Object.assign(round, chatContext ?? inferServerContextFromRound(round));
       continue;
     }
 
-    const chatContext = inferServerContextFromChatLines(filterRowsInRound(chatLinesByFile.get(round.filePath) ?? [], round));
-    Object.assign(round, chatContext ?? inferServerContextFromRound(round));
+    const segmentKey = proxiedServerHintKey(segmentMatch.segment);
+    const existingContext = resolvedContextsBySegment.get(segmentKey);
+    if (existingContext) {
+      Object.assign(round, existingContext);
+      continue;
+    }
+
+    const { segment } = segmentMatch;
+    const directContext = segment.serverAddress
+      ? buildDirectServerContext({
+          host: segment.serverHost ?? segment.serverAddress,
+          port: segment.serverPort ?? null,
+          address: segment.serverAddress,
+          text: segment.serverConnectMessage ?? null,
+          event: {
+            lineNo: segment.serverConnectLineNo ?? null,
+            timestampMs: segment.startMs ?? null,
+          },
+        })
+      : null;
+    const segmentEvents = filterRowsInPlaySegment(eventsByFile.get(segment.startFile) ?? [], segment);
+    const segmentChatLines = filterRowsInPlaySegment(chatLinesByFile.get(segment.startFile) ?? [], segment);
+    const resolvedContext = directContext
+      ? proxiedOrDirectServerContext(directContext, inferProxiedServerContext(directContext, {
+          events: segmentEvents,
+          chatLines: segmentChatLines,
+        }) ?? serverHints.get(segmentKey))
+      : inferServerContextFromChatLines(segmentChatLines)
+        ?? inferServerContextFromRound({
+          ...round,
+          events: segmentEvents,
+          resultEvidence: round.resultEvidence ?? [],
+        });
+    resolvedContextsBySegment.set(segmentKey, resolvedContext);
+    for (const sibling of annotated) {
+      if (roundLookupKey(sibling) !== roundLookupKey(round)) continue;
+      const siblingMatch = (segmentsByRoundKey.get(roundLookupKey(sibling)) ?? [])
+        .find(({ summary, segment: siblingSegment }) => roundBelongsToPlaySegment(sibling, summary, siblingSegment));
+      if (!siblingMatch || proxiedServerHintKey(siblingMatch.segment) !== segmentKey) continue;
+      Object.assign(sibling, resolvedContext);
+    }
   }
 
+  propagateResolvedServerContextsAcrossSessions(annotated, summaries, resolvedContextsBySession);
   return annotated;
 }
 
+function buildClientSessionRefs(summaries = []) {
+  return summaries.flatMap((summary) =>
+    (summary.clientSessions ?? [])
+      .map((session) => ({ summary, session }))
+  );
+}
+
+function groupClientSessionRefsByRoundLookupKey(refs = []) {
+  const grouped = new Map();
+  for (const ref of refs) {
+    const session = ref.session;
+    if (!session?.startFile) continue;
+    const key = `${ref.summary?.source ?? ""}\0${ref.summary?.scope ?? ""}\0${session.startFile}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(ref);
+  }
+  return grouped;
+}
+
+function clientSessionContextKey(summary, session) {
+  return `${summary?.source ?? ""}\0${summary?.scope ?? ""}\0${session?.startFile ?? ""}\0${session?.startMs ?? ""}\0${session?.endMs ?? ""}`;
+}
+
+function buildResolvedServerContextsBySession(clientSessions = [], eventsByFile = new Map(), chatLinesByFile = new Map()) {
+  const contexts = new Map();
+  for (const { summary, session } of clientSessions) {
+    const sessionKey = clientSessionContextKey(summary, session);
+    const sessionContext = resolveSessionServerContext(
+      summary,
+      session,
+      filterRowsInSession(eventsByFile.get(session.startFile) ?? [], session),
+      filterRowsInSession(chatLinesByFile.get(session.startFile) ?? [], session),
+    );
+    contexts.set(sessionKey, sessionContext);
+  }
+  return contexts;
+}
+
+function roundBelongsToClientSession(round, summary, session) {
+  if (!round || !session) return false;
+  if (round.source !== summary.source || round.scope !== summary.scope) return false;
+  if (session.startFile && round.filePath !== session.startFile) return false;
+  const sessionEndMs = session.endMs ?? Number.POSITIVE_INFINITY;
+  const roundStartMs = round.startMs ?? 0;
+  const roundEndMs = round.endMs ?? round.lastEventMs ?? roundStartMs;
+  return roundEndMs >= session.startMs && roundStartMs <= sessionEndMs;
+}
+
+function resolveSessionServerContext(summary, session, sessionEvents = [], sessionChatLines = []) {
+  const sessionRoundContext = inferServerContextFromRound({
+    source: summary?.source ?? null,
+    scope: summary?.scope ?? session?.scope ?? null,
+    filePath: session?.startFile ?? null,
+    startMs: session?.startMs ?? null,
+    endMs: session?.endMs ?? null,
+    events: sessionEvents,
+    resultEvidence: [],
+  });
+  if (isResolvedServerContext(sessionRoundContext)) {
+    return sessionRoundContext;
+  }
+
+  if (isLocalProxyUnknownServerContext(sessionRoundContext)) {
+    const proxiedContext = inferProxiedServerContext(sessionRoundContext, {
+      events: sessionEvents,
+      chatLines: sessionChatLines,
+    });
+    if (isResolvedServerContext(proxiedContext)) return proxiedContext;
+  }
+
+  const chatContext = inferServerContextFromChatLines(sessionChatLines);
+  if (isResolvedServerContext(chatContext)) {
+    return sessionRoundContext.serverAddress
+      ? {
+          ...chatContext,
+          serverAddress: sessionRoundContext.serverAddress,
+        }
+      : chatContext;
+  }
+
+  return null;
+}
+
+function propagateResolvedServerContextsAcrossSessions(rounds, summaries = [], resolvedContextsBySession = new Map()) {
+  const clientSessions = buildClientSessionRefs(summaries);
+  const clientSessionsByRoundKey = groupClientSessionRefsByRoundLookupKey(clientSessions);
+  const playSegments = buildMultiplayerPlaySegmentRefs(summaries);
+  const segmentsByRoundKey = groupPlaySegmentRefsByRoundLookupKey(playSegments);
+  const sessionGroups = new Map();
+
+  for (const round of rounds ?? []) {
+    const sessionMatch = (clientSessionsByRoundKey.get(roundLookupKey(round)) ?? [])
+      .find(({ summary, session }) => roundBelongsToClientSession(round, summary, session));
+    if (!sessionMatch) continue;
+
+    const key = clientSessionContextKey(sessionMatch.summary, sessionMatch.session);
+    if (!sessionGroups.has(key)) {
+      sessionGroups.set(key, {
+        summary: sessionMatch.summary,
+        session: sessionMatch.session,
+        rounds: [],
+        context: resolvedContextsBySession.get(key) ?? null,
+      });
+    }
+    sessionGroups.get(key).rounds.push(round);
+  }
+
+  for (const group of sessionGroups.values()) {
+    let context = group.context;
+    if (!isResolvedServerContext(context)) {
+      context = pickBestResolvedServerContext(group.rounds);
+    }
+    if (!isResolvedServerContext(context)) continue;
+    for (const round of group.rounds) {
+      const segmentMatch = (segmentsByRoundKey.get(roundLookupKey(round)) ?? [])
+        .find(({ summary, segment }) => roundBelongsToPlaySegment(round, summary, segment));
+      Object.assign(round, serverContextWithLocalProxyAddress(context, segmentMatch?.segment));
+    }
+  }
+}
+
+function pickBestResolvedServerContext(rounds = []) {
+  let fallback = null;
+  const orderedRounds = [...rounds].sort((a, b) => (a.startMs ?? 0) - (b.startMs ?? 0) || (a.lineNo ?? 0) - (b.lineNo ?? 0));
+  for (const round of orderedRounds) {
+    const context = ensureServerContext(round);
+    if (!isResolvedServerContext(context)) continue;
+    if (context.serverConfidence === "direct") return context;
+    fallback ??= context;
+  }
+  return fallback;
+}
+
+function isResolvedServerContext(context) {
+  return Boolean(context) &&
+    context.serverConfidence !== "unknown" &&
+    context.serverLabel !== "未知服务器" &&
+    context.serverLabel !== "本地代理 / 未知服务器";
+}
+
+function isLocalProxyUnknownServerContext(context) {
+  return Boolean(context) &&
+    context.serverConfidence === "direct" &&
+    context.serverLabel === "本地代理 / 未知服务器";
+}
+
 function annotateActivitySegmentWithServerContext(segment, context = {}) {
+  const clientSessionsByKey = context.clientSessionsByKey ?? new Map();
+  const resolvedContextsBySession = context.resolvedContextsBySession ?? new Map();
   const playSegmentsByKey = context.playSegmentsByKey ?? new Map();
   const serverHints = context.serverHints ?? new Map();
   const eventsByFile = context.eventsByFile ?? new Map();
   const chatLinesByFile = context.chatLinesByFile ?? new Map();
   const match = (playSegmentsByKey.get(roundLookupKey(segment)) ?? [])
     .find(({ summary, playSegment }) => activitySegmentBelongsToPlaySegment(segment, summary, playSegment));
+  const sessionMatch = (clientSessionsByKey.get(roundLookupKey(segment)) ?? [])
+    .find(({ summary, session }) => roundBelongsToClientSession(segment, summary, session));
+  if (sessionMatch) {
+    const sessionContext = resolvedContextsBySession.get(clientSessionContextKey(sessionMatch.summary, sessionMatch.session));
+    if (isResolvedServerContext(sessionContext)) {
+      return {
+        ...segment,
+        ...serverContextWithLocalProxyAddress(sessionContext, match?.playSegment),
+      };
+    }
+  }
 
   if (match?.playSegment?.serverAddress) {
     const { playSegment } = match;
@@ -2357,6 +2569,25 @@ function proxiedOrDirectServerContext(directContext, proxiedContext) {
   return proxiedContext ?? directContext;
 }
 
+function serverContextWithLocalProxyAddress(context, segment) {
+  if (!context || context.serverAddress || !segment?.serverAddress) return context;
+  const directContext = buildDirectServerContext({
+    host: segment.serverHost ?? segment.serverAddress,
+    port: segment.serverPort ?? null,
+    address: segment.serverAddress,
+    text: segment.serverConnectMessage ?? null,
+    event: {
+      lineNo: segment.serverConnectLineNo ?? null,
+      timestampMs: segment.startMs ?? null,
+    },
+  });
+  if (!isLocalProxyUnknownServerContext(directContext)) return context;
+  return {
+    ...context,
+    serverAddress: directContext.serverAddress,
+  };
+}
+
 function proxiedServerHintKey(segment) {
   return `${segment.startFile ?? ""}\0${segment.startMs ?? ""}\0${segment.endMs ?? ""}\0${segment.serverAddress ?? ""}`;
 }
@@ -2368,6 +2599,16 @@ function filterRowsInPlaySegment(rows, segment) {
     row?.timestampMs !== undefined &&
     row.timestampMs >= segment.startMs &&
     row.timestampMs <= segmentEndMs
+  );
+}
+
+function filterRowsInSession(rows, session) {
+  const sessionEndMs = session.endMs ?? Number.POSITIVE_INFINITY;
+  return rows.filter((row) =>
+    row?.timestampMs !== null &&
+    row?.timestampMs !== undefined &&
+    row.timestampMs >= session.startMs &&
+    row.timestampMs <= sessionEndMs
   );
 }
 

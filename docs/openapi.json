@@ -595,7 +595,7 @@
     },
     "/api/performance": {
       "get": {
-        "summary": "Lightweight local performance baseline, saved-baseline comparison, and machine-readable recommendations summarized from privacy-safe refresh history, store metadata, store read baseline, recent store table read metrics, cache stats, and API JSON cache stats without raw refresh debug fields",
+        "summary": "Lightweight local performance baseline, refresh diagnostics, output timestamp consistency, saved-baseline comparison, and machine-readable recommendations summarized from privacy-safe refresh history, store metadata, store read baseline, recent store table read metrics, cache stats, and API JSON cache stats without raw refresh debug fields",
         "responses": {
           "200": {
             "$ref": "#/components/responses/JsonResponse"

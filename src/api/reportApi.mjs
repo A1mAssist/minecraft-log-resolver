@@ -327,6 +327,8 @@ async function appStatusResponse(context, method) {
   const storeReportGeneratedAt = store?.reportGeneratedAt ?? null;
   const reportReady = Boolean(reportFile.exists && summaryFile.exists && report && summaryRead.data && reportValidation.ok && summaryValidation.ok);
   const storeReady = Boolean(storeFile.exists && store && storeManifestValidation.ok && storeFilesValidation.ok);
+  const storeOutOfSync = Boolean(reportReady && storeReady && storeReportGeneratedAt !== report?.generatedAt);
+  const reportMatchesStore = reportReady && storeReady ? !storeOutOfSync : null;
   const configChanged = Boolean(reportReady && reportSignature !== configSignature);
   const refreshReasons = refreshNeededReasons({
     reportReady,
@@ -399,6 +401,8 @@ async function appStatusResponse(context, method) {
       manifestPath: context.storeManifestPath,
       generatedAt: store?.generatedAt ?? null,
       reportGeneratedAt: storeReportGeneratedAt,
+      reportMatchesStore,
+      outOfSync: storeOutOfSync,
       jsonError: storeRead.error,
       manifestError: storeManifestValidation.message,
       manifestErrorReason: storeManifestValidation.reason,
@@ -2806,6 +2810,7 @@ async function performanceResponse(context) {
     storeReadBaseline,
     cache,
     apiCache,
+    refreshDiagnostics: summarizeRefreshDiagnostics(context.refresh, items),
     comparison: comparePerformanceBaselines(currentPerformanceBaseline, savedPerformanceBaseline),
     dataReady: Boolean(appStatus.ready),
     needsRefresh: Boolean(appStatus.needsRefresh),
@@ -2841,6 +2846,13 @@ async function buildPerformanceOutputsBaseline(context, appStatus) {
       bytes: summaryFile.exists && summaryFile.type === "file" ? summaryFile.bytes : null,
       jsonError: appStatus.report?.summaryJsonError ?? null,
       schemaErrorReason: appStatus.report?.summarySchemaErrorReason ?? null,
+    },
+    consistency: {
+      reportGeneratedAt: appStatus.report?.generatedAt ?? null,
+      storeReportGeneratedAt: appStatus.store?.reportGeneratedAt ?? null,
+      storeGeneratedAt: appStatus.store?.generatedAt ?? null,
+      reportMatchesStore: appStatus.store?.reportMatchesStore ?? null,
+      storeOutOfSync: Boolean(appStatus.store?.outOfSync),
     },
   };
 }
@@ -2937,6 +2949,7 @@ function buildRefreshHistoryEntry(refresh) {
     durationMs: durationBetweenMs(refresh.startedAt, refresh.finishedAt),
     phaseTimings: publicPhaseTimings(refresh),
     phaseDurationsMs: phaseDurationsMs(refresh),
+    diagnostics: privacySafeRefreshDiagnostics(refresh.diagnostics),
     exitCode: refresh.exitCode,
     cancelRequested: Boolean(refresh.cancelRequested),
     errorCategory: refresh.errorCategory ?? classifyRefreshError(refresh),
@@ -2964,6 +2977,7 @@ function normalizeRefreshHistory(items) {
       durationMs: item.durationMs ?? durationBetweenMs(item.startedAt, item.finishedAt),
       phaseTimings: normalizePhaseTimings(item.phaseTimings),
       phaseDurationsMs: item.phaseDurationsMs ?? phaseDurationsMs({ phaseTimings: item.phaseTimings ?? {} }),
+      diagnostics: privacySafeRefreshDiagnostics(item.diagnostics),
       cancelRequested: Boolean(item.cancelRequested),
       errorCategory: item.errorCategory ?? classifyRefreshError(item),
       logTail: Array.isArray(item.logTail) ? item.logTail : [],
@@ -3001,6 +3015,8 @@ async function buildStorePerformanceBaseline(context, appStatus) {
     ready: Boolean(statusStore.ready),
     generatedAt: statusStore.generatedAt ?? null,
     reportGeneratedAt: statusStore.reportGeneratedAt ?? null,
+    reportMatchesStore: statusStore.reportMatchesStore ?? null,
+    outOfSync: Boolean(statusStore.outOfSync),
     jsonError: statusStore.jsonError ?? null,
     manifestErrorReason: statusStore.manifestErrorReason ?? null,
     fileErrorReason: statusStore.fileErrorReason ?? null,
@@ -3315,6 +3331,7 @@ function appendRefreshLog(refresh, chunk) {
 function updateRefreshPhaseFromLog(refresh, line) {
   const progress = parseProgressLine(line);
   if (progress) {
+    mergeRefreshDiagnostics(refresh, progress.diagnostics);
     const phase = progress.phase === "extract_chat_lines" ? "parse" : progress.phase;
     if (phase) transitionRefreshPhase(refresh, phase);
     if (typeof progress.percent === "number") {
@@ -3361,6 +3378,79 @@ function progressPercent(progress) {
   if (progress.phase === "parse") return 45 + Math.round(ratio * 20);
   if (progress.phase === "build_report") return 65;
   return refreshPhaseMinimum(progress.phase);
+}
+
+function mergeRefreshDiagnostics(refresh, diagnostics) {
+  const sanitized = privacySafeRefreshDiagnostics(diagnostics);
+  if (!sanitized) return;
+  refresh.diagnostics = {
+    ...(refresh.diagnostics ?? {}),
+    ...sanitized,
+  };
+}
+
+function privacySafeRefreshDiagnostics(diagnostics) {
+  if (!diagnostics || typeof diagnostics !== "object" || Array.isArray(diagnostics)) return null;
+  const output = {};
+  for (const section of ["discovery", "scan", "parse", "chatLines", "chatEvents"]) {
+    const value = diagnostics[section];
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const sanitized = sanitizeRefreshDiagnosticSection(value);
+    if (Object.keys(sanitized).length) output[section] = sanitized;
+  }
+  return Object.keys(output).length ? output : null;
+}
+
+function sanitizeRefreshDiagnosticSection(value) {
+  const allowedFields = [
+    "roots",
+    "scopes",
+    "files",
+    "bytes",
+    "latestModifiedMs",
+    "durationMs",
+    "chatLines",
+    "matched",
+    "cacheHits",
+    "cacheMisses",
+    "cacheSkippedFiles",
+  ];
+  return Object.fromEntries(
+    allowedFields
+      .filter((field) => Number.isFinite(value[field]))
+      .map((field) => [field, value[field]]),
+  );
+}
+
+function summarizeRefreshDiagnostics(activeRefresh, historyItems = []) {
+  const latest = activeRefresh?.running
+    ? privacySafeRefreshDiagnostics(activeRefresh.diagnostics)
+    : privacySafeRefreshDiagnostics(historyItems[0]?.diagnostics);
+  const succeeded = historyItems
+    .filter((item) => item.status === "succeeded")
+    .map((item) => privacySafeRefreshDiagnostics(item.diagnostics))
+    .filter(Boolean);
+  return {
+    latest,
+    averages: averageRefreshDiagnostics(succeeded),
+  };
+}
+
+function averageRefreshDiagnostics(items) {
+  const output = {};
+  for (const section of ["discovery", "scan", "parse", "chatLines", "chatEvents"]) {
+    const rows = items.map((item) => item[section]).filter(Boolean);
+    if (!rows.length) continue;
+    const fields = new Set(rows.flatMap((row) => Object.keys(row)));
+    const sectionAverages = Object.fromEntries(
+      [...fields]
+        .sort()
+        .map((field) => [field, averageFinite(rows.map((row) => row[field]))])
+        .filter(([, value]) => Number.isFinite(value)),
+    );
+    if (Object.keys(sectionAverages).length) output[section] = sectionAverages;
+  }
+  return Object.keys(output).length ? output : null;
 }
 
 function refreshPhaseMinimum(phase) {
@@ -4714,6 +4804,7 @@ function publicRefresh(refresh) {
     durationMs: durationBetweenMs(refresh.startedAt, refresh.finishedAt),
     phaseTimings: publicPhaseTimings(refresh),
     phaseDurationsMs: phaseDurationsMs(refresh),
+    diagnostics: privacySafeRefreshDiagnostics(refresh.diagnostics),
     exitCode: refresh.exitCode ?? null,
     cancelRequested: Boolean(refresh.cancelRequested),
     failurePhase: refresh.failurePhase ?? null,

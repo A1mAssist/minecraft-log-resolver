@@ -166,6 +166,14 @@ function testServerContext() {
   assert.equal(proxiedBujidao.serverLabel, "布吉岛");
   assert.equal(proxiedBujidao.serverEvidence.source, "chat_text");
 
+  const proxiedHytBackend = inferProxiedServerContext(buildDirectServerContext({ host: "localhost", port: 25565 }), {
+    chatLines: [{ message: "Kicked whilst connecting to 43sw-solo4:", lineNo: 10, timestampMs: 790 }],
+  });
+  assert.equal(proxiedHytBackend.serverNetwork, "NetEase");
+  assert.equal(proxiedHytBackend.serverAddress, "localhost");
+  assert.equal(proxiedHytBackend.serverLabel, "花雨庭");
+  assert.equal(proxiedHytBackend.serverEvidence.source, "chat_text");
+
   const chatOnlyHyt = inferServerContextFromChatLines([
     { message: "[花雨庭] 您有1封未读邮件，按M键查看", lineNo: 11, timestampMs: 791 },
   ]);
@@ -787,6 +795,114 @@ function testRoundBuilder() {
   assert.equal(serverContextReport.rounds.reliable[3].serverAddress, null);
   assert.equal(serverContextReport.rounds.reliable[3].serverLabel, "NetEase / AuroraNetease_Clients");
   assert.equal(serverContextReport.rounds.reliable[3].serverEvidence.source, "scope_hint");
+
+  const sessionPropagationReport = buildReport({
+    roots: [],
+    encoding: "utf8",
+    ruleSets: [],
+    customRulePaths: [],
+    owner: {},
+    summaries: [
+      {
+        source: "TestSource",
+        scope: "TestScope",
+        logFiles: 1,
+        bytes: 100,
+        events: { client_start: 0, client_stop: 0, server_connect: 1, chat_message: 0, death_or_kill: 0, crash: 0 },
+        clientSessions: [],
+        playSegments: [
+          {
+            scope: "TestScope",
+            localUser: "LauncherUser",
+            type: "multiplayer",
+            startMs: 0,
+            endMs: 400_000,
+            durationSeconds: 400,
+            startFile: "D:/logs/session-propagation.log",
+            serverHost: "mc.hypixel.net",
+            serverAddress: "mc.hypixel.net",
+            serverPort: 25565,
+            serverConnectLineNo: 12,
+            serverConnectMessage: "Connecting to mc.hypixel.net, 25565",
+          },
+        ],
+      },
+    ],
+    eventResult: {
+      ...emptyEventResult(),
+      events: [],
+      chatLines: [],
+    },
+    rounds: [
+      reportRound({ source: "TestSource", scope: "TestScope", filePath: "D:/logs/session-propagation.log", startMs: 10_000, endMs: 100_000, lineNo: 1 }),
+      reportRound({
+        source: "TestSource",
+        scope: "TestScope",
+        filePath: "D:/logs/session-propagation.log",
+        startMs: 120_000,
+        endMs: 200_000,
+        lineNo: 2,
+        serverNetwork: null,
+        serverAddress: null,
+        serverLabel: "未知服务器",
+        serverConfidence: "unknown",
+        serverEvidence: { source: "unknown" },
+      }),
+    ],
+  });
+  assert.equal(sessionPropagationReport.rounds.reliable[0].serverLabel, "Hypixel");
+  assert.equal(sessionPropagationReport.rounds.reliable[1].serverLabel, "Hypixel");
+  assert.equal(sessionPropagationReport.rounds.reliable[1].serverConfidence, "direct");
+
+  const sessionContextFromChatReport = buildReport({
+    roots: [],
+    encoding: "utf8",
+    ruleSets: [],
+    customRulePaths: [],
+    owner: {},
+    summaries: [
+      {
+        source: "TestSource",
+        scope: "TestScope",
+        logFiles: 1,
+        bytes: 100,
+        events: { client_start: 0, client_stop: 0, server_connect: 0, chat_message: 0, death_or_kill: 0, crash: 0 },
+        clientSessions: [
+          {
+            scope: "TestScope",
+            localUser: "LauncherUser",
+            startMs: 0,
+            endMs: 260_000,
+            durationSeconds: 260,
+            startFile: "D:/logs/chat-session.log",
+          },
+        ],
+        playSegments: [],
+      },
+    ],
+    eventResult: {
+      ...emptyEventResult(),
+      events: [],
+      chatLines: [
+        {
+          source: "TestSource",
+          scope: "TestScope",
+          filePath: "D:/logs/chat-session.log",
+          lineNo: 20,
+          timestampMs: 150_000,
+          message: "欢迎光临花雨庭 >>>",
+        },
+      ],
+    },
+    rounds: [
+      reportRound({ source: "TestSource", scope: "TestScope", filePath: "D:/logs/chat-session.log", startMs: 10_000, endMs: 100_000, lineNo: 1 }),
+      reportRound({ source: "TestSource", scope: "TestScope", filePath: "D:/logs/chat-session.log", startMs: 120_000, endMs: 200_000, lineNo: 2 }),
+    ],
+  });
+  assert.equal(sessionContextFromChatReport.rounds.reliable[0].serverLabel, "花雨庭");
+  assert.equal(sessionContextFromChatReport.rounds.reliable[1].serverLabel, "花雨庭");
+  assert.equal(sessionContextFromChatReport.rounds.reliable[0].serverConfidence, "inferred");
+  assert.equal(sessionContextFromChatReport.rounds.reliable[1].serverConfidence, "inferred");
 
   const nonBedwarsHintReport = buildReport({
     roots: [],
@@ -1684,6 +1800,7 @@ function testActivityBuilder() {
   assert.equal(activity.segments[0].serverPlayerId, hytPitEvents[1].payload.killer);
   assert.equal(activity.segments[0].serverPlayerIdConfidence, "high");
   assert.equal(activity.segments[0].serverPlayerIdSource, "direct_self_event");
+  assert.equal(activity.segments[0].serverLabel, "花雨庭");
   assert.equal(buildRounds(hytPitEvents).length, 0);
 
   const rewardActivity = buildActivity([], [
@@ -1810,6 +1927,42 @@ function testActivityBuilder() {
   assert.equal(proxiedPitActivity.segments[0].serverLabel, "\u82b1\u96e8\u5ead");
   assert.equal(proxiedPitActivity.segments[0].serverConfidence, "inferred");
   assert.equal(proxiedPitActivity.segments[0].serverEvidence.source, "chat_template");
+
+  const chatSessionPitActivity = buildActivity(
+    [
+      {
+        source: "TestSource",
+        scope: "BedWars TestScope",
+        clientSessions: [
+          {
+            scope: "BedWars TestScope",
+            localUser: "Owner",
+            startMs: 0,
+            endMs: 120_000,
+            durationSeconds: 120,
+            startFile: filePath,
+          },
+        ],
+        playSegments: [],
+      },
+    ],
+    [
+      event("game_mode", 10_000, 31, { gameMode: "the_pit" }, filePath, {}, "Owner", "game-state", "pit_battle_entered"),
+    ],
+    [
+      {
+        source: "TestSource",
+        scope: "BedWars TestScope",
+        filePath,
+        lineNo: 32,
+        timestampMs: 80_000,
+        message: "欢迎光临花雨庭 >>>",
+      },
+    ],
+  );
+  assert.equal(chatSessionPitActivity.segments[0].serverNetwork, "NetEase");
+  assert.equal(chatSessionPitActivity.segments[0].serverLabel, "花雨庭");
+  assert.equal(chatSessionPitActivity.segments[0].serverEvidence.source, "chat_text");
 
   const genericCountdownBeforePit = buildRounds([
     event("round_countdown", 0, 1, { seconds: "10" }, filePath, {}, "灰色染料", "bedwars", "zh_countdown_plain"),

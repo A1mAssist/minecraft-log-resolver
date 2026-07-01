@@ -187,6 +187,7 @@ function serverHintFromTemplateText(text) {
   if (/(^|[.:_-])mcyc([.:_-]|$)|gameworld|game_world/i.test(value)) return { network: "游戏世界", label: "游戏世界" };
   if (/claycloud|zhantu|粘土|黏土/i.test(value)) return { network: "粘土云", label: "粘土云" };
   if (/hypixel|(^|[.:_-])hyp([.:_-]|$)/i.test(value)) return { network: "Hypixel", label: "Hypixel" };
+  if (isHuayutingProxyBackendText(value)) return { network: "NetEase", label: "花雨庭" };
   if (/zh_hyt|huayuting|hua\s*yu\s*ting|hyt|netease|花雨庭|网易|\[战墙\]|^战墙$/i.test(value)) return { network: "NetEase", label: /hyt|huayuting|花雨庭|\[战墙\]|^战墙$/i.test(value) ? "花雨庭" : "NetEase" };
   return null;
 }
@@ -264,6 +265,10 @@ function isHuayutingHost(text) {
     || /neteasehyt|huayuting|hua-?yu-?ting|(^|[.-])hyt([.-]|$)/i.test(text);
 }
 
+function isHuayutingProxyBackendText(text) {
+  return /\b\d*sw-solo\d+\b/i.test(String(text ?? ""));
+}
+
 function isHypixelHost(text) {
   return /(^|\.)hypixel\.net$|hypixel|(^|[.-])hyp([.-]|$)/i.test(text);
 }
@@ -316,6 +321,7 @@ function matchedEvidenceText(rawMessage, fallback) {
     "NetEase",
     "HYT",
     "HuayuTing",
+    "sw-solo",
     "布吉岛",
     "HmXix",
     "黑客服",

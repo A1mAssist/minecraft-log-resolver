@@ -32,6 +32,9 @@ async function buildDoctorChecks(context, options = {}) {
     summary: await checkJson(summaryPath, options),
     store: await checkStoreManifest(storeManifestPath, storeDir, options),
   };
+  outputs.consistency = buildDerivedOutputsConsistency(outputs);
+  outputs.store.reportMatchesStore = outputs.consistency.reportMatchesStore;
+  outputs.store.outOfSync = outputs.consistency.storeOutOfSync;
   const cache = {
     parse: await checkFile(resolveConfigPath(context, config.cache.parse), options),
     chat: await checkFile(resolveConfigPath(context, config.cache.chat), options),
@@ -75,7 +78,8 @@ async function buildDoctorChecks(context, options = {}) {
     && outputReady(checks.outputs.report)
     && outputReady(checks.outputs.summary)
     && outputReady(checks.outputs.store)
-    && checks.outputs.store.filesReady !== false;
+    && checks.outputs.store.filesReady !== false
+    && !checks.outputs.consistency.outOfSync;
   checks.needsRefresh = !checks.outputs.report.exists
     || !checks.outputs.summary.exists
     || !checks.outputs.store.exists
@@ -83,7 +87,8 @@ async function buildDoctorChecks(context, options = {}) {
     || Boolean(checks.outputs.summary.jsonError)
     || Boolean(checks.outputs.store.jsonError)
     || Boolean(checks.outputs.store.schemaError)
-    || checks.outputs.store.filesReady === false;
+    || checks.outputs.store.filesReady === false
+    || checks.outputs.consistency.outOfSync;
   return checks;
 }
 
@@ -308,12 +313,39 @@ function doctorPerformanceNeedsRefresh(checks = {}) {
     || Boolean(outputs.summary?.jsonError)
     || Boolean(outputs.store?.jsonError)
     || Boolean(outputs.store?.schemaError)
-    || outputs.store?.filesReady === false;
+    || outputs.store?.filesReady === false
+    || Boolean(outputs.consistency?.outOfSync);
+}
+
+function buildDerivedOutputsConsistency(outputs) {
+  const report = outputs.report ?? {};
+  const summary = outputs.summary ?? {};
+  const store = outputs.store ?? {};
+  const reportReady = Boolean(outputReady(report) && report.generatedAt);
+  const summaryReady = Boolean(outputReady(summary) && summary.generatedAt);
+  const storeReady = Boolean(outputReady(store) && store.filesReady !== false && store.reportGeneratedAt);
+  const summaryOutOfSync = Boolean(reportReady && summaryReady && summary.generatedAt !== report.generatedAt);
+  const storeOutOfSync = Boolean(reportReady && storeReady && store.reportGeneratedAt !== report.generatedAt);
+  return {
+    reportGeneratedAt: report.generatedAt ?? null,
+    summaryGeneratedAt: summary.generatedAt ?? null,
+    storeGeneratedAt: store.generatedAt ?? null,
+    storeReportGeneratedAt: store.reportGeneratedAt ?? null,
+    summaryMatchesReport: reportReady && summaryReady ? !summaryOutOfSync : null,
+    reportMatchesStore: reportReady && storeReady ? !storeOutOfSync : null,
+    summaryOutOfSync,
+    storeOutOfSync,
+    outOfSync: summaryOutOfSync || storeOutOfSync,
+  };
 }
 
 function buildDoctorStorePerformance(store = {}) {
   return {
     ready: Boolean(store.exists && !store.jsonError && !store.schemaError && store.filesReady !== false),
+    generatedAt: store.generatedAt ?? null,
+    reportGeneratedAt: store.reportGeneratedAt ?? null,
+    reportMatchesStore: store.reportMatchesStore ?? null,
+    outOfSync: Boolean(store.outOfSync),
     declaredFiles: store.declaredFiles ?? 0,
     filesReady: store.filesReady ?? null,
     missingFiles: store.missingFiles ?? [],
@@ -531,7 +563,8 @@ function buildDoctorPerformanceRecommendations({ baseline, store, cache, history
   }
   const storeBytes = Number.isFinite(store.totalBytes) ? store.totalBytes : 0;
   const storeRows = Number.isFinite(store.totalJsonlRows) ? store.totalJsonlRows : 0;
-  if (storeBytes >= 250 * 1024 * 1024 || storeRows >= 1_000_000) {
+  const storeSizeNeedsReview = storeBytes >= 250 * 1024 * 1024 || storeRows >= 1_000_000;
+  if (storeSizeNeedsReview) {
     recommendations.push({
       code: "review_split_store_limits",
       severity: "notice",
@@ -542,7 +575,8 @@ function buildDoctorPerformanceRecommendations({ baseline, store, cache, history
       },
     });
   }
-  if (cache.totalFiles > 0 && cache.existingFiles < cache.totalFiles) {
+  const missingCaches = cache.totalFiles > 0 && cache.existingFiles < cache.totalFiles;
+  if (missingCaches) {
     recommendations.push({
       code: "warm_missing_caches",
       severity: "info",
@@ -554,11 +588,17 @@ function buildDoctorPerformanceRecommendations({ baseline, store, cache, history
       },
     });
   }
-  if (!recommendations.length) {
+  const jsonlStoreHealthy = !historyWarning
+    && !needsRefresh
+    && baseline.sampleSize > 0
+    && store.ready
+    && !storeSizeNeedsReview
+    && !missingCaches;
+  if (jsonlStoreHealthy) {
     recommendations.push({
       code: "jsonl_store_ok",
       severity: "info",
-      message: "Current split JSONL store and refresh baseline do not show a need for SQLite.",
+      message: "Current split JSONL store size does not show a need for SQLite.",
       details: {
         sampleSize: baseline.sampleSize,
         totalBytes: store.totalBytes,

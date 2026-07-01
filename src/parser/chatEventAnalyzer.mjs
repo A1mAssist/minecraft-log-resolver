@@ -1,4 +1,4 @@
-import { discoverLogFiles, discoverScopes } from "./discovery.mjs";
+import { discoverLogFiles, discoverMinecraftLogScopes } from "./discovery.mjs";
 import { parseLine } from "./lineParser.mjs";
 import { readLogLines } from "./reader.mjs";
 import { getRuleSignature, isClientModNoiseMessage, parseChatEvent } from "./chatRules.mjs";
@@ -11,37 +11,41 @@ import { collectChatLinesByFile } from "./chatLineCache.mjs";
 const CHAT_EVENT_ANALYZER_SIGNATURE = "chat-events-v6";
 
 export async function analyzeChatEvents(roots, options = {}) {
-  const scopeFilter = options.scope ? new Set(options.scope) : null;
   const cache = await loadParseCache(options.cachePath);
+  const started = process.hrtime.bigint();
   const ownerAliases = normalizeOwnerAliases(options.ownerAliases);
   const cacheSignature = `${CHAT_EVENT_ANALYZER_SIGNATURE}:${getRuleSignature(options.ruleSets, { customRulePaths: options.customRulePaths, inlineRulePacks: options.inlineRulePacks })}:owner=${ownerAliases.join("\0")}`;
   const events = [];
   const counts = {};
   const ruleCounts = { byRuleSet: {}, byRuleId: {}, byRulePack: {}, byRulePackId: {} };
   const unmatchedTemplates = new Map();
-  const totals = { files: 0, chatLines: 0, matched: 0, cacheHits: 0, cacheMisses: 0 };
+  const totals = { files: 0, chatLines: 0, matched: 0, cacheHits: 0, cacheMisses: 0, cacheSkippedFiles: 0, durationMs: null };
   const unmatchedLimit = options.unmatchedTemplatesLimit ?? 0;
   let filesDone = 0;
   let filesTotal = 0;
+  const discoveredScopes = options.discoveredScopes
+    ?? await discoverMinecraftLogScopes(roots, { scope: options.scope });
+  let chatLineResult = null;
   const chatLinesByFile = options.chatLinesCachePath
     ? (
-        await collectChatLinesByFile(roots, {
+        chatLineResult = await collectChatLinesByFile(roots, {
           scope: options.scope,
           encoding: options.encoding,
           cachePath: options.chatLinesCachePath,
+          discoveredScopes,
           onProgress: options.onProgress,
         })
       ).linesByFile
     : null;
+  const chatEventStarted = process.hrtime.bigint();
+  filesTotal = discoveredScopes.reduce((total, scope) => total + (scope.files?.length ?? 0), 0);
 
   for (const root of roots) {
-    let scopes = await discoverScopes(root);
-    if (scopeFilter) scopes = scopes.filter((scope) => scopeFilter.has(scope.scope));
+    const scopes = discoveredScopes.filter((scope) => scope.root === root);
 
     for (const scope of scopes) {
-      const files = await discoverLogFiles(scope);
+      const files = scope.files ?? await discoverLogFiles(scope);
       totals.files += files.length;
-      filesTotal += files.length;
 
       for (const file of files) {
         options.onProgress?.({
@@ -59,6 +63,7 @@ export async function analyzeChatEvents(roots, options = {}) {
 
         if (cachedResult) {
           totals.cacheHits += 1;
+          totals.cacheSkippedFiles += 1;
         } else {
           totals.cacheMisses += 1;
           if (options.cachePath) setCachedFile(cache, file, fileResult, { ...options, cacheSignature });
@@ -78,9 +83,21 @@ export async function analyzeChatEvents(roots, options = {}) {
 
   touchCache(cache);
   await saveParseCache(options.cachePath, cache);
+  totals.durationMs = Number((process.hrtime.bigint() - chatEventStarted) / 1_000_000n);
+  const totalDurationMs = Number((process.hrtime.bigint() - started) / 1_000_000n);
 
   return {
     totals,
+    diagnostics: {
+      parse: {
+        files: totals.files,
+        chatLines: totals.chatLines,
+        matched: totals.matched,
+        durationMs: totalDurationMs,
+      },
+      chatLines: chatLineResult?.totals ?? null,
+      chatEvents: { ...totals },
+    },
     counts,
     ruleCounts,
     unmatchedTemplates: [...unmatchedTemplates.values()]

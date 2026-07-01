@@ -25,17 +25,17 @@ npm.cmd run result:by-hint -- --per-group 5 --prefix unknown-result-by-hint-curr
 npm.cmd run result:audit -- --mode bedwars --prefix unknown-audit-bedwars-current
 npm.cmd run result:audit-labels -- --input labeling/reviewed.jsonl
 npm.cmd run rules:audit-workflow -- --input labeling/reviewed.jsonl --target-mode bedwars
+npm.cmd run refresh:local
 npm.cmd run performance:baseline
-npm.cmd run report
 ```
 
 Refresh job timing:
 
 - `GET /api/refresh` exposes `phaseTimings` and `phaseDurationsMs` for the active or most recent job.
-- `GET /api/refresh/history` stores the last 50 completed jobs with per-job `phaseDurationsMs` and `summary.averagePhaseDurationsMs`.
-- `GET /api/performance` summarizes successful refresh jobs into a local baseline with sample size, average duration, per-phase min/average/max, and the current slowest average phase. It also reports split-store `declaredFiles`, total bytes, JSONL table rows, largest files, table-level size/row metadata, sampled `storeReadBaseline`, recent store read metrics, derived cache file presence/bytes, process JSON API cache hit/miss/parse timings by privacy-safe file kind, and `comparison` against the saved `artifacts/performance-baseline-current.json` when present.
+- `GET /api/refresh/history` stores the last 50 completed jobs with per-job `phaseDurationsMs`, privacy-safe scan/chat cache diagnostics, and `summary.averagePhaseDurationsMs`.
+- `GET /api/performance` summarizes successful refresh jobs into a local baseline with sample size, average duration, per-phase min/average/max, and the current slowest average phase. It also reports split-store `declaredFiles`, total bytes, JSONL table rows, largest files, table-level size/row metadata, sampled `storeReadBaseline`, recent store read metrics, derived cache file presence/bytes, process JSON API cache hit/miss/parse timings by privacy-safe file kind, `refreshDiagnostics`, output timestamp consistency, and `comparison` against the saved `artifacts/performance-baseline-current.json` when present.
 - `performance.apiCache` is the current API process hot JSON cache. It uses file `mtime`/`ctime`/`size` validation, stores no raw paths in the response, and is automatically invalidated by refresh commits, config reloads, cleanup, and relevant local derived-data writes.
-- `/api/performance.recommendations` is the machine-readable action list for local product UX. It can report `collect_refresh_baseline`, `repair_refresh_history`, `refresh_needed`, `store_not_ready`, `warm_missing_caches`, `investigate_refresh_bottleneck`, `review_split_store_limits`, `review_store_table_read_latency`, or `jsonl_store_ok`.
+- `/api/performance.recommendations` is the machine-readable action list for local product UX. It can report `collect_refresh_baseline`, `repair_refresh_history`, `refresh_needed`, `store_not_ready`, `warm_missing_caches`, `investigate_refresh_bottleneck`, `review_split_store_limits`, `review_store_table_read_latency`, or `jsonl_store_ok`. `refresh_needed` includes `store_out_of_sync` when the split-store manifest points at an older report.
 - If `.cache/refresh-history.json` is missing, corrupt, or unreadable, `/api/refresh/history`, `/api/performance`, diagnostics packages, and `npm run doctor` keep returning usable output with a `refresh_history_*` warning and an empty timing baseline. Store/cache readiness still comes from their own files.
 - `GET /api/diagnostics/package` includes the same performance section in privacy-safe troubleshooting bundles.
 - `npm run doctor -- --json` and `npm run doctor -- --package` include a privacy-safe `performance` section with refresh-history baseline, split-store size/row metadata, and cache file presence/bytes, without log tails or current-file paths.
@@ -57,7 +57,8 @@ Expected warm-cache behavior on the current full local dataset:
 - `result:audit -- --label-template`: opt-in local helper that writes `<prefix>.labels.jsonl`, a compact reviewed-label input file with blank labels plus audit facts and short context references. It can be validated directly by `result:audit-labels` and does not change report/store/config/rules.
 - `result:audit-labels`: reads reviewed unknown-audit label exports in JSON, JSONL, or CSV form, validates allowed labels and current `roundRef` values, and prints a privacy-safe summary without changing report/store/config/rules.
 - `rules:audit-workflow`: validates reviewed labels, generates draft rule-pack artifacts, and dry-runs the candidate through the promotion gate without enabling rules or writing official report/store/config files.
-- `performance:baseline`: reads existing report/store/cache/refresh-history derived data, samples split-store page reads, compares with a previous baseline when available, archives the old current baseline under `artifacts/performance-history`, and writes a privacy-safe JSON baseline without scanning original logs.
-- `report`: about 8 seconds with warm parse, chat-line, and chat-event caches.
+- `performance:baseline`: reads existing report/store/cache/refresh-history derived data, samples split-store page reads, compares with a previous baseline when available, archives the old current baseline under `artifacts/performance-history`, and writes a privacy-safe JSON baseline without scanning original logs. It reports `store_out_of_sync` when report and split store timestamps do not match.
+- `refresh:local`: recommended local command for rebuilding report, summary, split store, and performance baseline together.
+- `report`: about 8 seconds with warm parse, chat-line, and chat-event caches. Use `refresh:local` when the frontend/API should consume the regenerated data.
 
 When rules change, `cache.chat` should miss and rebuild, but the rebuild should still use `cache.chatLines`, so it should not scan the full raw log corpus again.

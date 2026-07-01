@@ -7418,58 +7418,100 @@ function bindShareStatDragInteractions(listenerOptions) {
     handle.addEventListener("pointerdown", (event) => {
       if (event.button !== undefined && event.button !== 0) return;
       const token = handle.closest("[data-share-stat-slot]");
-      const key = token?.dataset.shareStatSlot;
-      if (!token || !key || !slotsElement.contains(token)) return;
+      if (!token || !slotsElement.contains(token)) return;
       event.preventDefault();
-      startShareStatDrag({ event, handle, token, slotsElement, key, listenerOptions });
+      startShareStatDrag({ event, handle, token, slotsElement, listenerOptions });
     }, listenerOptions);
   });
 }
 
-function startShareStatDrag({ event, handle, token, slotsElement, key, listenerOptions }) {
+function startShareStatDrag({ event, handle, token, slotsElement, listenerOptions }) {
   const pointerId = event.pointerId;
-  const startX = event.clientX;
-  const startY = event.clientY;
-  let targetIndex = Number(token.dataset.shareStatIndex ?? 0);
+  const draggedKey = token.dataset.shareStatSlot;
+  const tokenRect = token.getBoundingClientRect();
+  const pointerOffset = {
+    x: event.clientX - tokenRect.left,
+    y: event.clientY - tokenRect.top,
+  };
+  const placeholder = createShareStatPlaceholder(token);
+  const ghost = createShareStatGhost(token, tokenRect, pointerOffset);
+  let targetIndex = Math.max(0, shareStatPlaceholderIndex(slotsElement, placeholder));
+  let settled = false;
 
-  handle.setPointerCapture?.(pointerId);
-  token.classList.add("is-dragging");
+  slotsElement.setPointerCapture?.(pointerId);
+  slotsElement.replaceChild(placeholder, token);
+  document.body.appendChild(ghost);
   slotsElement.classList.add("is-dragging");
   document.body.classList.add("share-stat-drag-active");
 
   const updateDrag = (moveEvent) => {
     if (moveEvent.pointerId !== pointerId) return;
     moveEvent.preventDefault();
-    token.style.transform = `translate3d(${moveEvent.clientX - startX}px, ${moveEvent.clientY - startY}px, 0)`;
-    targetIndex = shareStatDropIndex(slotsElement, token, moveEvent);
-    markShareStatDropTarget(slotsElement, token, targetIndex);
+    moveShareStatGhost(ghost, moveEvent, pointerOffset);
+    const nextIndex = shareStatDropIndex(slotsElement, placeholder, moveEvent);
+    if (nextIndex !== targetIndex) {
+      targetIndex = nextIndex;
+      moveShareStatPlaceholderInDom(slotsElement, placeholder, targetIndex);
+    }
   };
 
   const finishDrag = (finishEvent, commit) => {
-    if (finishEvent.pointerId !== pointerId) return;
+    if (settled || finishEvent.pointerId !== pointerId) return;
+    settled = true;
     window.removeEventListener("pointermove", updateDrag);
     window.removeEventListener("pointerup", finishDrop);
     window.removeEventListener("pointercancel", cancelDrop);
-    handle.releasePointerCapture?.(pointerId);
-    clearShareStatDragState(slotsElement, token);
-    if (commit && reorderShareStatSlot(key, targetIndex)) renderMainRegion();
+    slotsElement.removeEventListener("lostpointercapture", finishDrop);
+    const finalOrder = commit ? shareStatOrderWithDraggedItem(slotsElement, placeholder, draggedKey) : null;
+    if (slotsElement.hasPointerCapture?.(pointerId)) {
+      try {
+        slotsElement.releasePointerCapture(pointerId);
+      } catch {
+        // Ignore release errors when the browser already dropped capture.
+      }
+    }
+    ghost.remove();
+    placeholder.remove();
+    slotsElement.classList.remove("is-dragging");
+    document.body.classList.remove("share-stat-drag-active");
+    if (finalOrder) storeShareStatSlots(finalOrder);
+    renderMainRegion();
   };
 
   const finishDrop = (finishEvent) => finishDrag(finishEvent, true);
-  const cancelDrop = (finishEvent) => finishDrag(finishEvent, false);
+  const cancelDrop = (finishEvent) => finishDrag(finishEvent, true);
 
   updateDrag(event);
   window.addEventListener("pointermove", updateDrag, listenerOptions);
   window.addEventListener("pointerup", finishDrop, listenerOptions);
   window.addEventListener("pointercancel", cancelDrop, listenerOptions);
+  slotsElement.addEventListener("lostpointercapture", finishDrop, listenerOptions);
 }
 
-function clearShareStatDragState(slotsElement, token) {
-  token.classList.remove("is-dragging");
-  token.style.transform = "";
-  slotsElement.classList.remove("is-dragging");
-  document.body.classList.remove("share-stat-drag-active");
-  clearShareStatDropMarkers(slotsElement);
+function createShareStatPlaceholder(token) {
+  const placeholder = token.cloneNode(true);
+  placeholder.classList.add("share-stat-placeholder");
+  placeholder.setAttribute("aria-hidden", "true");
+  placeholder.dataset.shareStatPlaceholder = "1";
+  return placeholder;
+}
+
+function createShareStatGhost(token, rect, pointerOffset) {
+  const ghost = token.cloneNode(true);
+  ghost.classList.add("share-stat-ghost");
+  ghost.setAttribute("aria-hidden", "true");
+  ghost.removeAttribute("data-share-stat-index");
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.height = `${rect.height}px`;
+  ghost.style.transform = `translate3d(${rect.left}px, ${rect.top}px, 0)`;
+  ghost.style.willChange = "transform";
+  ghost.style.pointerEvents = "none";
+  moveShareStatGhost(ghost, { clientX: rect.left + pointerOffset.x, clientY: rect.top + pointerOffset.y }, pointerOffset);
+  return ghost;
+}
+
+function moveShareStatGhost(ghost, event, pointerOffset) {
+  ghost.style.transform = `translate3d(${event.clientX - pointerOffset.x}px, ${event.clientY - pointerOffset.y}px, 0)`;
 }
 
 function shareStatDropIndex(slotsElement, draggingToken, event) {
@@ -7487,7 +7529,7 @@ function shareStatDropIndex(slotsElement, draggingToken, event) {
 
 function shareStatDropTokens(slotsElement, draggingToken) {
   return [...slotsElement.querySelectorAll("[data-share-stat-slot]")]
-    .filter((token) => token !== draggingToken);
+    .filter((token) => token !== draggingToken && !token.dataset.shareStatPlaceholder);
 }
 
 function nearestShareStatToken(tokens, x, y) {
@@ -7512,25 +7554,62 @@ function shareStatPointerAfterToken(tokens, targetToken, x, y) {
   return y > centerY;
 }
 
-function markShareStatDropTarget(slotsElement, draggingToken, targetIndex) {
-  const tokens = shareStatDropTokens(slotsElement, draggingToken);
-  clearShareStatDropMarkers(slotsElement);
-  if (!tokens.length) return;
-  if (targetIndex <= 0) {
-    tokens[0].classList.add("is-drop-before");
-    return;
-  }
-  if (targetIndex >= tokens.length) {
-    tokens.at(-1).classList.add("is-drop-after");
-    return;
-  }
-  tokens[targetIndex].classList.add("is-drop-before");
+function moveShareStatPlaceholderInDom(slotsElement, placeholder, targetIndex) {
+  const tokens = shareStatDropTokens(slotsElement, placeholder);
+  const normalizedTarget = clamp(targetIndex, 0, tokens.length);
+  const beforeRects = shareStatTokenRects(slotsElement);
+  slotsElement.insertBefore(placeholder, tokens[normalizedTarget] ?? null);
+  animateShareStatReflow(slotsElement, beforeRects, placeholder);
 }
 
-function clearShareStatDropMarkers(slotsElement) {
-  slotsElement.querySelectorAll(".is-drop-before, .is-drop-after").forEach((token) => {
-    token.classList.remove("is-drop-before", "is-drop-after");
-  });
+function shareStatPlaceholderIndex(slotsElement, placeholder) {
+  let index = 0;
+  for (const current of slotsElement.querySelectorAll("[data-share-stat-slot]")) {
+    if (current === placeholder) return index;
+    if (current.dataset.shareStatPlaceholder) continue;
+    index += 1;
+  }
+  return index;
+}
+
+function shareStatDomOrder(slotsElement) {
+  return [...slotsElement.querySelectorAll("[data-share-stat-slot]")]
+    .filter((token) => !token.dataset.shareStatPlaceholder)
+    .map((token) => token.dataset.shareStatSlot)
+    .filter(Boolean);
+}
+
+function shareStatOrderWithDraggedItem(slotsElement, placeholder, draggedKey) {
+  const order = shareStatDomOrder(slotsElement);
+  const index = clamp(shareStatPlaceholderIndex(slotsElement, placeholder), 0, order.length);
+  order.splice(index, 0, draggedKey);
+  return normalizeShareStatSlots(order);
+}
+
+function shareStatTokenRects(slotsElement) {
+  return new Map([...slotsElement.querySelectorAll("[data-share-stat-slot]")].filter((token) => !token.dataset.shareStatPlaceholder).map((token) => [
+    token,
+    token.getBoundingClientRect(),
+  ]));
+}
+
+function animateShareStatReflow(slotsElement, beforeRects, placeholder) {
+  for (const token of slotsElement.querySelectorAll("[data-share-stat-slot]")) {
+    if (token === placeholder || token.dataset.shareStatPlaceholder) continue;
+    const before = beforeRects.get(token);
+    if (!before) continue;
+    const after = token.getBoundingClientRect();
+    const dx = before.left - after.left;
+    const dy = before.top - after.top;
+    if (!dx && !dy) continue;
+    token.animate([
+      { transform: `translate(${dx}px, ${dy}px)` },
+      { transform: "translate(0, 0)" },
+    ], {
+      duration: 145,
+      easing: "ease-out",
+    });
+  }
 }
 
 function setViewMode(kind, mode) {

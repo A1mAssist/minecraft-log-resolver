@@ -373,7 +373,7 @@ assert.ok(results.body.summary);
 assert.ok(results.body.signals);
 assert.ok(results.body.unknownAudit);
 assert.equal(results.body.unknownAudit.total, results.body.summary.unknownRoundResults);
-assert.equal(results.body.unknownAudit.byCategory.bedwars_no_safe_result_evidence, 68);
+assert.equal(results.body.unknownAudit.byCategory.bedwars_no_safe_result_evidence, 69);
 assert.equal(results.body.unknownAudit.byCategory.bedwars_low_evidence_pseudo_candidate, 10);
 assert.equal(results.body.unknownAudit.byCategory.bedwars_self_death_boundary_review, 2);
 assert.equal(results.body.unknownAudit.byCategory.bedwars_team_win_low_confidence_review, 1);
@@ -1687,6 +1687,14 @@ async function runProductApiFixtureTests() {
     assert.ok(completedRefresh.filesTotal >= 1);
     assert.ok(completedRefresh.filesDone >= 1);
     assert.match(completedRefresh.currentFile, /latest\.log$/);
+    assert.ok(completedRefresh.diagnostics.discovery.files >= 1);
+    assert.ok(Number.isFinite(completedRefresh.diagnostics.discovery.durationMs));
+    assert.ok(completedRefresh.diagnostics.scan.files >= 1);
+    assert.ok(Number.isFinite(completedRefresh.diagnostics.scan.cacheMisses));
+    assert.ok(completedRefresh.diagnostics.chatLines.files >= 1);
+    assert.ok(Number.isFinite(completedRefresh.diagnostics.chatLines.cacheMisses));
+    assert.ok(completedRefresh.diagnostics.chatEvents.files >= 1);
+    assert.ok(Number.isFinite(completedRefresh.diagnostics.chatEvents.cacheMisses));
     assert.ok(completedRefresh.log.every((line) => !line.startsWith("@@MLO_PROGRESS@@")));
 
     const officialCachePaths = [
@@ -1759,6 +1767,8 @@ async function runProductApiFixtureTests() {
     assert.ok(Number.isFinite(successHistory.body.latest.phaseDurationsMs.scan));
     assert.ok(successHistory.body.latest.phaseTimings.commit);
     assert.ok(Number.isFinite(successHistory.body.latest.phaseDurationsMs.commit));
+    assert.ok(successHistory.body.latest.diagnostics.discovery.files >= 1);
+    assert.ok(successHistory.body.latest.diagnostics.chatEvents.files >= 1);
     assert.equal(successHistory.body.latest.files.done, successHistory.body.latest.filesDone);
     assert.ok(successHistory.body.summary.succeeded >= 1);
     assert.equal(successHistory.body.summary.lastSucceededAt, successHistory.body.latest.finishedAt);
@@ -1800,6 +1810,11 @@ async function runProductApiFixtureTests() {
     assert.ok(performanceAfterRefresh.body.apiCache);
     assert.equal("path" in performanceAfterRefresh.body.apiCache, false);
     assert.ok(performanceAfterRefresh.body.apiCache.kinds.every((item) => item.kind && !("path" in item)));
+    assert.ok(performanceAfterRefresh.body.refreshDiagnostics.latest.discovery.files >= 1);
+    assert.ok(performanceAfterRefresh.body.refreshDiagnostics.latest.chatEvents.files >= 1);
+    assert.ok(performanceAfterRefresh.body.refreshDiagnostics.averages.discovery.files >= 1);
+    assert.equal(performanceAfterRefresh.body.outputs.consistency.reportMatchesStore, true);
+    assert.equal(performanceAfterRefresh.body.outputs.consistency.storeOutOfSync, false);
     assert.equal(performanceAfterRefresh.body.needsRefresh, false);
     assert.ok(performanceAfterRefresh.body.recommendations.some((item) => item.code === "jsonl_store_ok"));
 
@@ -1857,6 +1872,22 @@ async function runProductApiFixtureTests() {
     assert.ok(refreshedReport.inputs.bundledRuleFiles.some((item) => item.type === "file" && item.sha256));
     assert.ok(refreshedReport.inputs.customRulePaths.some((item) => item.endsWith(path.join("custom-rules", "user"))));
     assert.ok(Array.isArray(refreshedReport.inputs.customRuleFiles));
+
+    await writeFile(reportPath, `${JSON.stringify({ ...refreshedReport, generatedAt: "2099-01-01T00:00:00.000Z" }, null, 2)}\n`, "utf8");
+    const outOfSyncStatus = await fixtureRequest(fixtureContext, "/api/app/status");
+    assert.equal(outOfSyncStatus.status, 200);
+    assert.equal(outOfSyncStatus.body.store.ready, true);
+    assert.equal(outOfSyncStatus.body.store.reportMatchesStore, false);
+    assert.equal(outOfSyncStatus.body.store.outOfSync, true);
+    assert.equal(outOfSyncStatus.body.needsRefresh, true);
+    assert.ok(outOfSyncStatus.body.refreshReasons.includes("store_out_of_sync"));
+    const outOfSyncPerformance = await fixtureRequest(fixtureContext, "/api/performance");
+    assert.equal(outOfSyncPerformance.status, 200);
+    assert.equal(outOfSyncPerformance.body.outputs.consistency.reportMatchesStore, false);
+    assert.equal(outOfSyncPerformance.body.outputs.consistency.storeOutOfSync, true);
+    assert.equal(outOfSyncPerformance.body.store.outOfSync, true);
+    assert.ok(outOfSyncPerformance.body.recommendations.some((item) => item.code === "refresh_needed"));
+    await writeFile(reportPath, refreshedReportText, "utf8");
 
     await writeFile(reportPath, "{", "utf8");
     const corruptReportStatus = await fixtureRequest(fixtureContext, "/api/app/status");

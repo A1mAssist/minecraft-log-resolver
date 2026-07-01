@@ -122,6 +122,8 @@ export async function buildStorePerformanceBaseline({ storeDir, manifestPath, st
     ready: Boolean(statusStore.ready),
     generatedAt: statusStore.generatedAt ?? null,
     reportGeneratedAt: statusStore.reportGeneratedAt ?? null,
+    reportMatchesStore: statusStore.reportMatchesStore ?? null,
+    outOfSync: Boolean(statusStore.outOfSync),
     jsonError: statusStore.jsonError ?? null,
     manifestErrorReason: statusStore.manifestErrorReason ?? null,
     fileErrorReason: statusStore.fileErrorReason ?? null,
@@ -363,7 +365,8 @@ export function buildPerformanceRecommendations({
   }
   const storeBytes = Number.isFinite(store.totalBytes) ? store.totalBytes : 0;
   const storeRows = Number.isFinite(store.totalJsonlRows) ? store.totalJsonlRows : 0;
-  if (storeBytes >= 250 * 1024 * 1024 || storeRows >= 1_000_000) {
+  const storeSizeNeedsReview = storeBytes >= 250 * 1024 * 1024 || storeRows >= 1_000_000;
+  if (storeSizeNeedsReview) {
     recommendations.push({
       code: "review_split_store_limits",
       severity: "notice",
@@ -377,7 +380,8 @@ export function buildPerformanceRecommendations({
   const recentSlowestReadMs = Number.isFinite(storeReads?.slowestReadMs) ? storeReads.slowestReadMs : null;
   const baselineSlowestReadMs = Number.isFinite(storeReadBaseline?.slowestReadMs) ? storeReadBaseline.slowestReadMs : null;
   const slowestReadMs = Math.max(recentSlowestReadMs ?? 0, baselineSlowestReadMs ?? 0);
-  if (slowestReadMs >= 1000) {
+  const readLatencyNeedsReview = slowestReadMs >= 1000;
+  if (readLatencyNeedsReview) {
     recommendations.push({
       code: "review_store_table_read_latency",
       severity: "notice",
@@ -390,7 +394,8 @@ export function buildPerformanceRecommendations({
       },
     });
   }
-  if (cache.totalFiles > 0 && cache.existingFiles < cache.totalFiles) {
+  const missingCaches = cache.totalFiles > 0 && cache.existingFiles < cache.totalFiles;
+  if (missingCaches) {
     recommendations.push({
       code: "warm_missing_caches",
       severity: "info",
@@ -402,11 +407,18 @@ export function buildPerformanceRecommendations({
       },
     });
   }
-  if (!recommendations.length) {
+  const jsonlStoreHealthy = !historyWarning
+    && !needsRefresh
+    && baseline.sampleSize > 0
+    && store.ready
+    && !storeSizeNeedsReview
+    && !readLatencyNeedsReview
+    && !missingCaches;
+  if (jsonlStoreHealthy) {
     recommendations.push({
       code: "jsonl_store_ok",
       severity: "info",
-      message: "Current split JSONL store and refresh baseline do not show a need for SQLite.",
+      message: "Current split JSONL store size and read latency do not show a need for SQLite.",
       details: {
         sampleSize: baseline.sampleSize,
         totalBytes: store.totalBytes,

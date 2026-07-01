@@ -1,4 +1,4 @@
-import { discoverLogFiles, discoverScopes } from "./discovery.mjs";
+import { discoverLogFiles, discoverMinecraftLogScopes } from "./discovery.mjs";
 import { parseLine } from "./lineParser.mjs";
 import { readLogLines } from "./reader.mjs";
 import { createTimestampResolver } from "./time.mjs";
@@ -15,8 +15,8 @@ export async function collectChatLines(roots, options = {}) {
 }
 
 export async function collectChatLinesByFile(roots, options = {}) {
-  const scopeFilter = options.scope ? new Set(options.scope) : null;
   const cache = await loadParseCache(options.cachePath);
+  const started = process.hrtime.bigint();
   const totals = {
     roots: roots.length,
     scopes: 0,
@@ -24,21 +24,23 @@ export async function collectChatLinesByFile(roots, options = {}) {
     chatLines: 0,
     cacheHits: 0,
     cacheMisses: 0,
+    cacheSkippedFiles: 0,
+    durationMs: null,
   };
   const linesByFile = new Map();
   let filesDone = 0;
   let filesTotal = 0;
+  const discoveredScopes = options.discoveredScopes
+    ?? await discoverMinecraftLogScopes(roots, { scope: options.scope });
+  totals.scopes = discoveredScopes.length;
+  totals.files = discoveredScopes.reduce((total, scope) => total + (scope.files?.length ?? 0), 0);
+  filesTotal = totals.files;
 
   for (const root of roots) {
-    let scopes = await discoverScopes(root);
-    if (scopeFilter) scopes = scopes.filter((scope) => scopeFilter.has(scope.scope));
-    totals.scopes += scopes.length;
+    const scopes = discoveredScopes.filter((scope) => scope.root === root);
 
     for (const scope of scopes) {
-      const files = await discoverLogFiles(scope);
-      totals.files += files.length;
-      filesTotal += files.length;
-
+      const files = scope.files ?? await discoverLogFiles(scope);
       for (const file of files) {
         options.onProgress?.({
           phase: "extract_chat_lines",
@@ -56,6 +58,7 @@ export async function collectChatLinesByFile(roots, options = {}) {
 
         if (cachedResult) {
           totals.cacheHits += 1;
+          totals.cacheSkippedFiles += 1;
           if (fileResult !== cachedResult) {
             setCachedFile(cache, file, fileResult, {
               encoding: options.encoding,
@@ -87,6 +90,7 @@ export async function collectChatLinesByFile(roots, options = {}) {
 
   touchCache(cache);
   await saveParseCache(options.cachePath, cache);
+  totals.durationMs = Number((process.hrtime.bigint() - started) / 1_000_000n);
   return { totals, linesByFile };
 }
 

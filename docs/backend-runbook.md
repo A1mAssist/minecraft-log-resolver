@@ -10,9 +10,7 @@ Current authoritative baseline:
 
 Derived data checks:
 - `npm.cmd run release:notes -- --out artifacts/release-boundary-draft.md`
-- `npm.cmd run report -- --unmatched-out unmatched-debug.json`
-- `npm.cmd run store:export`
-- `npm.cmd run performance:baseline`
+- `npm.cmd run refresh:local`
 - `npm.cmd run result:audit -- --mode bedwars --prefix unknown-audit-bedwars-current`
 - `npm.cmd run result:audit -- --mode bedwars --priority high --include-context --review-packet --label-template --display-encoding utf-8 --prefix unknown-audit-bedwars-high-review --before-ms 0 --after-ms 120000 --context-lines 80`
 - `npm.cmd run activity:review -- --mode the_pit --prefix activity-review-the-pit-current`

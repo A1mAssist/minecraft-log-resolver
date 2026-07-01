@@ -71,3 +71,34 @@ export async function discoverLogFiles(scope) {
 
   return logFiles.sort((a, b) => a.modifiedMs - b.modifiedMs);
 }
+
+export async function discoverMinecraftLogScopes(roots, options = {}) {
+  const scopeFilter = options.scope ? new Set(options.scope) : null;
+  const discovered = [];
+
+  for (const root of roots) {
+    let scopes = await discoverScopes(root);
+    if (scopeFilter) scopes = scopes.filter((scope) => scopeFilter.has(scope.scope));
+
+    for (const scope of scopes) {
+      const files = await discoverLogFiles(scope);
+      discovered.push({
+        ...scope,
+        files,
+      });
+    }
+  }
+
+  return discovered;
+}
+
+export function summarizeDiscoveredScopes(scopes = []) {
+  const files = scopes.flatMap((scope) => scope.files ?? []);
+  return {
+    roots: new Set(scopes.map((scope) => scope.root)).size,
+    scopes: scopes.length,
+    files: files.length,
+    bytes: files.reduce((total, file) => total + (Number.isFinite(file.size) ? file.size : 0), 0),
+    latestModifiedMs: files.reduce((latest, file) => Math.max(latest, Number.isFinite(file.modifiedMs) ? file.modifiedMs : 0), 0),
+  };
+}
