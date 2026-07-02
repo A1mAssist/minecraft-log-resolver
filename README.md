@@ -172,9 +172,9 @@ npm.cmd run tauri:build -- --no-bundle
 npm.cmd run build:tauri-portable
 ```
 
-The bundle is written to `dist/tauri-desktop` and includes `MinecraftLogObservatory.exe`. This edition uses Tauri IPC between the WebView UI and the local backend bridge, so it does not bind `127.0.0.1` HTTP ports.
+The bundle is written to `dist/tauri-desktop` and includes `MinecraftLogObservatory.exe`. This edition uses Tauri IPC between the WebView UI and the in-process Rust backend, so it does not bind `127.0.0.1` HTTP ports.
 
-The first-run flow is the same in the bundle: choose or paste a root, validate it, save it through `/api/config`, then refresh to generate derived data.
+The `v0.3.0` Tauri edition handles dashboard read APIs in Rust. It does not copy a Node.js runtime, does not start `node.exe`, and does not bind localhost ports. Refresh, parser, config writes, and rule editing are still legacy JavaScript backend features and return `not_implemented_in_rust_backend` in the pure Rust runtime until they are ported.
 
 Derived-data cleanup:
 

@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local offline Minecraft log analytics desktop app"
 authors = ["A1mAssist"]
 license = ""
@@ -23,3 +23,4 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.11.5", features = [] }
 tauri-plugin-log = "2"
+url = "2"

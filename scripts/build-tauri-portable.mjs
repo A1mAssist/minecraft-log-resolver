@@ -6,8 +6,6 @@ const rootDir = process.cwd();
 const outDir = path.resolve(readOption("--out") ?? path.join("dist", "tauri-desktop"));
 const exeSource = path.resolve(readOption("--exe") ?? path.join("src-tauri", "target", "release", "app.exe"));
 const exeName = readOption("--name") ?? "MinecraftLogObservatory.exe";
-const embeddedNodeSource = path.resolve(readOption("--node") ?? process.execPath);
-const embeddedNodeRelativePath = path.join("runtime", "node", "node.exe");
 
 const includedFiles = [
   "README.md",
@@ -49,23 +47,22 @@ const manifest = {
     type: "tauri-v2-exe",
     path: exeName,
     transport: "tauri-ipc",
+    backend: "rust",
     tcpListeners: false,
-    bridge: "scripts/tauri-api-bridge.mjs",
   },
   runtime: {
-    embeddedNode: true,
-    nodePath: embeddedNodeRelativePath.replaceAll("\\", "/"),
+    embeddedNode: false,
+    nodePath: null,
   },
   excluded: [...excludedDirs].sort(),
   notes: [
     "This Tauri bundle uses IPC instead of localhost HTTP ports.",
-    "It includes a copied Node.js runtime only for the internal API bridge.",
+    "The desktop runtime handles read-only dashboard API requests in Rust and does not start node.exe.",
     "It intentionally excludes raw Minecraft logs and derived local data such as reports, cache, store, exports, and labeling work queues.",
   ],
 };
 
 await includeBuiltExe();
-await includeEmbeddedNode();
 for (const file of includedFiles) await includeFile(file);
 for (const file of optionalFiles) await includeOptionalFile(file);
 for (const dir of includedDirs) await includeDir(dir);
@@ -76,7 +73,7 @@ console.log(JSON.stringify({
   ok: true,
   outDir: manifest.outDir,
   exe: exeName,
-  embeddedNode: true,
+  embeddedNode: false,
   files: manifest.files.length,
   dirs: manifest.dirs.length,
   excluded: manifest.excluded,
@@ -86,13 +83,6 @@ async function includeBuiltExe() {
   const target = path.join(outDir, exeName);
   await copyFile(exeSource, target);
   manifest.files.push(exeName);
-}
-
-async function includeEmbeddedNode() {
-  const target = path.join(outDir, embeddedNodeRelativePath);
-  await mkdir(path.dirname(target), { recursive: true });
-  await copyFile(embeddedNodeSource, target);
-  manifest.files.push(embeddedNodeRelativePath.replaceAll("\\", "/"));
 }
 
 async function includeFile(relativeFile) {
