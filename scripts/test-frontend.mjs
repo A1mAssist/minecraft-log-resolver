@@ -117,6 +117,7 @@ assert.match(js, /setupMode:\s*false/);
 assert.match(js, /oobe:\s*\{/);
 assert.match(js, /picking:\s*false/);
 assert.match(js, /renderSetup/);
+assert.match(js, /oobe-card-actions/);
 assert.match(js, /shouldShowSetup/);
 {
   const shouldShowSetupBlock = js.match(/function shouldShowSetup\(appStatus\) \{[\s\S]*?\n\}/)?.[0] ?? "";
@@ -852,6 +853,7 @@ assert.match(css, /\.app-shell/);
 assert.match(css, /\.oobe-screen/);
 assert.match(css, /\.oobe-shell/);
 assert.match(css, /\.oobe-card/);
+assert.match(css, /\.oobe-card-actions/);
 assert.match(css, /\.oobe-root-field/);
 assert.match(css, /\.oobe-actions/);
 assert.match(css, /\.oobe-validation/);

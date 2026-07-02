@@ -1729,15 +1729,17 @@ function renderSetup() {
         </div>
         <section class="oobe-card" aria-label="${escapeAttribute(t("oobe.title"))}">
           <div class="oobe-card-head">
-            <div>
+            <div class="oobe-card-status">
               <span>${escapeHtml(t("oobe.status"))}</span>
               <strong>${escapeHtml(setupStatusLabel(state.appStatus))}</strong>
             </div>
-            <button type="button" class="language-toggle" data-action="switch-locale" aria-label="${escapeAttribute(t("languageLabel"))}" title="${escapeAttribute(t("languageLabel"))}">
-              <span>${escapeHtml(state.locale === "en" ? "EN" : "中")}</span>
-              <b>${escapeHtml(t("otherLocaleName"))}</b>
-            </button>
-            ${themeControl()}
+            <div class="oobe-card-actions">
+              <button type="button" class="language-toggle" data-action="switch-locale" aria-label="${escapeAttribute(t("languageLabel"))}" title="${escapeAttribute(t("languageLabel"))}">
+                <span>${escapeHtml(state.locale === "en" ? "EN" : "中")}</span>
+                <b>${escapeHtml(t("otherLocaleName"))}</b>
+              </button>
+              ${themeControl()}
+            </div>
           </div>
           ${oobeRootForm()}
           ${oobeValidationPanel()}

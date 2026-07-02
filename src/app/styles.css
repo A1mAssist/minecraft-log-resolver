@@ -320,9 +320,29 @@ b {
   align-items: flex-start;
 }
 
-.oobe-card-head > div {
+.oobe-card-status {
   display: grid;
   gap: 4px;
+  min-width: 0;
+}
+
+.oobe-card-actions {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.oobe-card-actions .language-toggle,
+.oobe-card-actions .theme-segmented {
+  flex: 0 0 auto;
+}
+
+.oobe-card-actions .theme-segmented {
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .oobe-card-head strong {
@@ -7105,6 +7125,10 @@ b {
   .oobe-card-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .oobe-card-actions {
+    justify-content: flex-start;
   }
 
   .oobe-actions {
