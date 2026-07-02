@@ -1,51 +1,68 @@
 # Minecraft Log Resolver
 
-Local offline Minecraft log analytics for one user on one machine.
+Minecraft Log Resolver is a local desktop tool for reading Minecraft log folders and turning them into searchable reports, match summaries, diagnostics, and review queues.
 
-The tool reads your selected `.minecraft` log roots and generates derived reports, split JSON/JSONL stores, diagnostics, review queues, and a local API for the dashboard. Raw Minecraft logs are read-only: the app does not move, edit, upload, or delete them.
+It is designed for one user on one machine. Your raw Minecraft logs stay on your computer and are treated as read-only input.
 
-## Quick Start
+## Download
 
-Start the local app:
-
-```bat
-start.bat
-```
-
-Default UI:
+Get the latest Windows build from the GitHub Releases page:
 
 ```text
-http://127.0.0.1:5173/
+https://github.com/A1mAssist/minecraft-log-resolver/releases/latest
 ```
 
-Stop local services:
-
-```bat
-stop.bat
-```
-
-The backend API binds to `127.0.0.1` by default. If port `8787` is busy, it chooses a local fallback and writes the runtime state to `.cache/api-server.json` for the static UI proxy.
-
-## First Run
-
-The first-run UI can open a Windows folder picker through:
+Recommended build:
 
 ```text
-POST /api/system/select-directory
+MinecraftLogResolver-v0.1.0-windows-x64.exe
 ```
 
-When called with `{ "validate": true }`, the picker also returns root validation diagnostics for the selected folder. If the picker is unavailable, paste an absolute path manually.
-
-Useful setup endpoints:
+Portable folder build:
 
 ```text
-GET /api/app/status
-GET /api/config
-PUT /api/config
-POST /api/config/validate-roots
-POST /api/refresh
-GET /api/refresh
-POST /api/refresh/cancel
+MinecraftLogResolver-v0.1.0-windows-x64-portable.zip
+```
+
+The Tauri desktop build uses the WebView already available on Windows and talks to the Rust backend through Tauri IPC. It does not bundle Node.js, does not start `node.exe`, and does not open a localhost HTTP port.
+
+## What It Does
+
+- Reads selected `.minecraft` roots and launcher instance folders.
+- Parses Minecraft chat logs into rounds, activity segments, server labels, and game modes.
+- Builds report and summary JSON for the dashboard.
+- Exports split JSON/JSONL stores for faster local browsing.
+- Produces diagnostics, unknown-result queues, and rule-review files.
+- Keeps original Minecraft log files untouched.
+
+## Current Desktop Status
+
+The Windows desktop build is a no-port Tauri app. The dashboard can load existing derived reports and stores through the Rust backend.
+
+Some editing and refresh workflows are still being ported from the legacy Node backend. In the pure Rust desktop runtime, refresh, parser execution, config writes, and rule editing currently return `not_implemented_in_rust_backend` until those paths are migrated.
+
+For full backend development workflows, use the Node commands in this repository.
+
+## Privacy
+
+Do not publish or attach these local files unless you know exactly what they contain:
+
+- `minecraft-log-resolver.local.json`
+- `.cache/`
+- `data/`
+- `exports/`
+- `labeling/`
+- `report-combined.json`
+- `report-combined-summary.json`
+- `unmatched-debug.json`
+- `artifacts/`
+
+These files may contain local paths, account names, chat context, derived statistics, or private review data.
+
+The shared example config is safe to commit:
+
+```text
+minecraft-log-resolver.local.example.json
 ```
 
 ## Local Config
@@ -62,16 +79,10 @@ Machine-private config:
 minecraft-log-resolver.local.json
 ```
 
-Do not put local paths, account aliases, or private directories in the shared config. Copy the example file:
+Create the private config from the example:
 
-```text
-minecraft-log-resolver.local.example.json
-```
-
-to:
-
-```text
-minecraft-log-resolver.local.json
+```bat
+copy minecraft-log-resolver.local.example.json minecraft-log-resolver.local.json
 ```
 
 Example:
@@ -79,8 +90,7 @@ Example:
 ```json
 {
   "roots": [
-    "D:\\Games\\Neon\\.minecraft",
-    "D:\\Games\\AuroraNetease_Clients\\.minecraft"
+    "D:\\Games\\Example\\.minecraft"
   ],
   "owner": {
     "aliases": [
@@ -91,171 +101,79 @@ Example:
 }
 ```
 
-`roots` may contain multiple `.minecraft` roots or launcher instance roots that contain `logs/`.
-
-## Refresh Data
-
-CLI refresh:
-
-```bat
-npm.cmd run report -- --unmatched-out unmatched-debug.json
-npm.cmd run store:export
-```
-
-API refresh:
-
-```text
-POST /api/refresh
-GET /api/refresh
-POST /api/refresh/cancel
-```
-
-Refresh phases:
-
-```text
-scan -> parse -> build_report -> export_store -> commit -> done
-```
-
-Report and store outputs are staged first. Old derived data is preserved if refresh is cancelled or fails.
-
-## Diagnostics And Cleanup
-
-Privacy-safe doctor:
-
-```bat
-npm.cmd run doctor
-npm.cmd run doctor -- --package
-```
-
-Performance baseline:
-
-```bat
-npm.cmd run performance:baseline
-GET /api/performance
-```
-
-Release gate:
-
-```bat
-npm.cmd run release:check
-npm.cmd run release:notes -- --out artifacts/release-boundary-draft.md
-```
-
-Build a local distributable folder:
-
-```bat
-npm.cmd run build:local-desktop
-```
-
-The bundle is written to `dist/local-desktop`. It includes the local API, static dashboard, rules, docs, and launch scripts, while excluding raw logs and derived local data.
-
-To include the current Node.js runtime in the bundle:
-
-```bat
-npm.cmd run build:local-desktop -- --embed-node current
-```
-
-The embedded runtime is copied to `dist/local-desktop/runtime/node/node.exe`, and `start.bat` prefers it before falling back to `node` from `PATH`.
-
-Build a Windows double-click launcher:
-
-```bat
-npm.cmd run build:windows-exe
-```
-
-The bundle is written to `dist/local-desktop` and includes `MinecraftLogResolver.exe`. The executable starts the local API and static dashboard directly; users do not run npm.
-
-Build the no-port Tauri desktop bundle:
-
-```bat
-npm.cmd run tauri:build -- --no-bundle
-npm.cmd run build:tauri-portable
-```
-
-The bundle is written to `dist/tauri-desktop` and includes `MinecraftLogResolver.exe`. This edition uses Tauri IPC between the WebView UI and the in-process Rust backend, so it does not bind `127.0.0.1` HTTP ports.
-
-The `v0.3.1` Tauri edition handles dashboard read APIs in Rust. It does not copy a Node.js runtime, does not start `node.exe`, and does not bind localhost ports. Refresh, parser, config writes, and rule editing are still legacy JavaScript backend features and return `not_implemented_in_rust_backend` in the pure Rust runtime until they are ported.
-
-Derived-data cleanup:
-
-```text
-POST /api/data/cleanup
-```
-
-Cleanup only removes derived data such as reports, cache, store, and refresh history. It never deletes original Minecraft logs.
-
-## Unknown Audit Workflow
-
-Export current unknown review queues:
-
-```bat
-npm.cmd run result:audit -- --mode bedwars --prefix unknown-audit-bedwars-current
-npm.cmd run result:audit -- --mode bedwars --priority high --include-context --review-packet --label-template --display-encoding utf-8 --prefix unknown-audit-bedwars-high-review --before-ms 0 --after-ms 120000 --context-lines 80
-```
-
-Check review readiness:
-
-```bat
-npm.cmd run result:audit-status -- --input labeling/unknown-audit-bedwars-high-review.labels.jsonl
-```
-
-Validate reviewed labels:
-
-```bat
-npm.cmd run result:audit-labels -- --input labeling/unknown-audit-bedwars-high-review.labels.jsonl
-```
-
-Preview candidate rules before enabling:
-
-```bat
-npm.cmd run rules:audit-workflow -- --input labeling/reviewed.jsonl --target-mode bedwars
-```
-
-Audit exports and labels do not change official win/loss/unknown statistics. Candidate rules must pass dry-run review before enabling and refreshing.
+`roots` may point to `.minecraft` folders or launcher instance folders that contain `logs/`.
 
 ## Development
 
-Common commands:
+Install dependencies:
+
+```bat
+npm.cmd install
+```
+
+Run the legacy local API and development UI:
 
 ```bat
 npm.cmd run api
 npm.cmd run dev
-npm.cmd run test:api
-npm.cmd run test:openapi
+```
+
+Run tests:
+
+```bat
 npm.cmd test
 ```
 
-Backend handoff and contracts:
+Useful focused checks:
 
-```text
-docs/backend-status.md
-docs/backend-runbook.md
-docs/backend-todo.md
-docs/api.md
-docs/openapi.json
-docs/performance.md
-docs/store.md
+```bat
+npm.cmd run test:frontend
+npm.cmd run test:api
+npm.cmd run test:openapi
+npm.cmd run test:release-check
 ```
 
-## Privacy Boundary
+## Build
 
-Do not share these local files directly:
+Build the Tauri frontend:
 
-- `minecraft-log-resolver.local.json`
-- `.cache/`
-- `report-combined.json`
-- `report-combined-summary.json`
-- `data/`
-- `artifacts/`
-- `exports/`
-- `labeling/`
+```bat
+npm.cmd run build:tauri-frontend
+```
 
-They may contain local paths, account names, raw chat context, full reports, or derived local statistics. Use privacy-safe diagnostics or share packages for troubleshooting.
+Build the Windows Tauri executable:
 
-## Current Principles
+```bat
+npm.cmd run tauri:build -- --no-bundle
+```
 
-- Raw Minecraft logs are always read-only.
-- The backend is a dependency-free Node.js ESM HTTP API by default.
-- Official win/loss inference is conservative; weak evidence goes to diagnostics and audit queues first.
-- The Pit is modeled as non-result activity with `result: "not_applicable"`, not as win/loss/unknown rounds.
-- JSON/JSONL remains the default data layer. Evaluate SQLite only if `/api/performance` shows sustained store size or read-latency pressure.
+Build the portable desktop folder:
+
+```bat
+npm.cmd run build:tauri-portable
+```
+
+Output:
+
+```text
+dist/tauri-desktop/MinecraftLogResolver.exe
+```
+
+Release artifacts are generated under:
+
+```text
+artifacts/
+```
+
+## Data Model Notes
+
+Some internal schema identifiers still use the earlier `minecraft-log-observatory-*` prefix. They are stable compatibility IDs for existing reports, stores, diagnostics, and tests; they are not the product name.
+
+## Project Principles
+
+- Local-first by default.
+- Raw logs are read-only.
+- Derived data can be rebuilt.
+- No cloud account, sync service, or telemetry is required.
+- Result inference is conservative; weak evidence goes to diagnostics and review queues.
+- The Pit is treated as activity, not win/loss round results.
