@@ -105,7 +105,7 @@ Performance baseline flow:
 ## 第一次启动
 
 1. 准备 Node.js 和 npm。
-2. 复制 `minecraft-log-observatory.local.example.json` 为 `minecraft-log-observatory.local.json`。
+2. 复制 `minecraft-log-resolver.local.example.json` 为 `minecraft-log-resolver.local.json`。
 3. 在 local config 中设置：
    - `roots`: 一个或多个本机 `.minecraft` 根目录。
    - `owner.aliases`: 服务器昵称或离线名。

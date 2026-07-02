@@ -16,7 +16,7 @@ try {
   assert.ok(result.excluded.includes("node_modules"));
 
   const manifest = JSON.parse(await readFile(path.join(outDir, "bundle-manifest.json"), "utf8"));
-  assert.equal(manifest.schema.name, "minecraft-log-observatory-local-desktop-bundle");
+  assert.equal(manifest.schema.name, "minecraft-log-resolver-local-desktop-bundle");
   assert.ok(manifest.files.includes("README.md"));
   assert.ok(manifest.files.includes("start.bat"));
   assert.ok(manifest.dirs.includes("scripts"));

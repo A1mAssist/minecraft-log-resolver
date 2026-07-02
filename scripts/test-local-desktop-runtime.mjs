@@ -12,7 +12,7 @@ let frontend = null;
 try {
   const bundleDir = path.join(tempDir, "bundle");
   await runBuild(["--out", bundleDir]);
-  await writeFile(path.join(bundleDir, "minecraft-log-observatory.local.json"), JSON.stringify({
+  await writeFile(path.join(bundleDir, "minecraft-log-resolver.local.json"), JSON.stringify({
     roots: [],
   }, null, 2), "utf8");
 

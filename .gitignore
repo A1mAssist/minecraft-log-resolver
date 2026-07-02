@@ -8,6 +8,7 @@ data/report-store/
 labeling/
 work/
 minecraft-log-observatory.local.json
+minecraft-log-resolver.local.json
 analysis-*.json
 chat-rounds-*.json
 chat-templates-*.json

@@ -1,4 +1,4 @@
-# Minecraft Log Observatory Handoff
+# Minecraft Log Resolver Handoff
 
 更新时间：2026-06-18
 
@@ -44,10 +44,10 @@ npm.cmd run test:openapi
 配置本机日志：
 
 ```bat
-copy minecraft-log-observatory.local.example.json minecraft-log-observatory.local.json
+copy minecraft-log-resolver.local.example.json minecraft-log-resolver.local.json
 ```
 
-然后编辑 `minecraft-log-observatory.local.json`：
+然后编辑 `minecraft-log-resolver.local.json`：
 
 ```json
 {
@@ -67,7 +67,7 @@ copy minecraft-log-observatory.local.example.json minecraft-log-observatory.loca
 }
 ```
 
-`minecraft-log-observatory.local.json` 是机器私有文件，不要提交、不要分享。
+`minecraft-log-resolver.local.json` 是机器私有文件，不要提交、不要分享。
 
 生成本机派生数据：
 
@@ -117,8 +117,8 @@ stop.bat
 - `index.html`
 - `start.bat`
 - `stop.bat`
-- `minecraft-log-observatory.config.json`
-- `minecraft-log-observatory.local.example.json`
+- `minecraft-log-resolver.config.json`
+- `minecraft-log-resolver.local.example.json`
 - `.gitignore`
 
 代码包不应包含：
@@ -133,7 +133,7 @@ stop.bat
 - `outputs/`
 - `labeling/`
 - `work/`
-- `minecraft-log-observatory.local.json`
+- `minecraft-log-resolver.local.json`
 - `report-combined.json`
 - `report-combined-summary.json`
 - `unmatched-debug.json`

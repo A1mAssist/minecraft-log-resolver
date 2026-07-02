@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export const defaultConfigPath = path.resolve("minecraft-log-observatory.config.json");
+export const defaultConfigPath = path.resolve("minecraft-log-resolver.config.json");
 
 const defaultConfig = {
   roots: [],

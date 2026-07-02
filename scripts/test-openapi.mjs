@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 const contract = JSON.parse(await readFile("docs/openapi.json", "utf8"));
 
 assert.equal(contract.openapi, "3.1.0");
-assert.equal(contract.info.title, "Minecraft Log Observatory API");
+assert.equal(contract.info.title, "Minecraft Log Resolver API");
 assert.ok(contract.paths["/api/health"].get);
 assert.ok(contract.paths["/api/app/status"].get);
 assert.ok(contract.paths["/api/config"].get);

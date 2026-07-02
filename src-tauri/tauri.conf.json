@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Minecraft Log Observatory",
-  "version": "0.3.0",
-  "identifier": "app.minecraft-log-observatory.local",
+  "productName": "Minecraft Log Resolver",
+  "version": "0.3.1",
+  "identifier": "app.minecraft-log-resolver.local",
   "build": {
     "frontendDist": "../dist/tauri-frontend",
     "beforeDevCommand": "npm.cmd run build:tauri-frontend",
@@ -12,7 +12,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Minecraft Log Observatory",
+        "title": "Minecraft Log Resolver",
         "width": 1280,
         "height": 820,
         "resizable": true,

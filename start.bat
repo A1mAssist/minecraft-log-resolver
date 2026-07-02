@@ -10,7 +10,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo Starting Minecraft Log Observatory...
+echo Starting Minecraft Log Resolver...
 start "MLO API" /min node scripts/api.mjs --port 8787
 timeout /t 1 /nobreak >nul
 start "MLO Frontend" /min node scripts/serve.mjs

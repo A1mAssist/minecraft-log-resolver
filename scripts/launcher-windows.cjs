@@ -3,7 +3,7 @@ const { existsSync } = require("node:fs");
 const { readFile } = require("node:fs/promises");
 const path = require("node:path");
 
-const appName = "Minecraft Log Observatory";
+const appName = "Minecraft Log Resolver";
 const rootDir = path.resolve(process.env.MLO_ROOT || path.dirname(process.execPath));
 const bundledNode = path.join(rootDir, "runtime", "node", "node.exe");
 const nodeExe = existsSync(bundledNode) ? bundledNode : "node";

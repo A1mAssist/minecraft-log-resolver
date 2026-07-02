@@ -5,15 +5,15 @@ const args = process.argv.slice(2);
 const rootDir = process.cwd();
 const outDir = path.resolve(readOption("--out") ?? path.join("dist", "tauri-desktop"));
 const exeSource = path.resolve(readOption("--exe") ?? path.join("src-tauri", "target", "release", "app.exe"));
-const exeName = readOption("--name") ?? "MinecraftLogObservatory.exe";
+const exeName = readOption("--name") ?? "MinecraftLogResolver.exe";
 
 const includedFiles = [
   "README.md",
   "HANDOFF.md",
   "package.json",
   "index.html",
-  "minecraft-log-observatory.config.json",
-  "minecraft-log-observatory.local.example.json",
+  "minecraft-log-resolver.config.json",
+  "minecraft-log-resolver.local.example.json",
 ];
 const optionalFiles = ["package-lock.json"];
 const includedDirs = ["docs", "scripts", "src", "custom-rules", path.join("dist", "tauri-frontend")];
@@ -34,7 +34,7 @@ await mkdir(outDir, { recursive: true });
 
 const manifest = {
   schema: {
-    name: "minecraft-log-observatory-tauri-portable-bundle",
+    name: "minecraft-log-resolver-tauri-portable-bundle",
     version: 1,
   },
   generatedAt: new Date().toISOString(),

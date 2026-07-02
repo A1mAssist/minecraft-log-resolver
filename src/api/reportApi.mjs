@@ -1208,7 +1208,7 @@ async function skinTextureResponse(context, url) {
     const skinResponse = await fetch(resolved.url, {
       headers: {
         "Accept": "image/png,image/*;q=0.8,*/*;q=0.5",
-        "User-Agent": "Minecraft Log Observatory/0.1",
+        "User-Agent": "Minecraft Log Resolver/0.1",
       },
     });
 
@@ -1300,7 +1300,7 @@ async function lookupMinecraftProfileByName(username) {
   const profileResponse = await fetch(`https://api.minecraftservices.com/minecraft/profile/lookup/name/${encodeURIComponent(username)}`, {
     headers: {
       "Accept": "application/json",
-      "User-Agent": "Minecraft Log Observatory/0.1",
+      "User-Agent": "Minecraft Log Resolver/0.1",
     },
   });
 
@@ -1332,7 +1332,7 @@ async function resolveMojangSkinTexture(uuid) {
   const profileResponse = await fetch(`https://sessionserver.mojang.com/session/minecraft/profile/${uuid}`, {
     headers: {
       "Accept": "application/json",
-      "User-Agent": "Minecraft Log Observatory/0.1",
+      "User-Agent": "Minecraft Log Resolver/0.1",
     },
   });
   if (profileResponse.status === 204 || profileResponse.status === 404) {

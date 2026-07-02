@@ -350,7 +350,7 @@ Frontend should branch on `error`, not English text. Important codes:
 1. Send a raw chat line to `POST /api/rules/test` to see whether current rules already classify it.
 2. If it is unmatched, send the same line to `POST /api/rules/draft` with the desired `type`.
 3. Review the generated regex manually, then validate a full rule pack through `POST /api/rules/validate`.
-4. Save reviewed rules with `POST /api/rule-packs/user`, or place them in another custom rule pack path configured in `minecraft-log-observatory.config.json`.
+4. Save reviewed rules with `POST /api/rule-packs/user`, or place them in another custom rule pack path configured in `minecraft-log-resolver.config.json`.
 5. Inspect or remove project-managed packs with `GET` or `DELETE /api/rule-packs/user/<id>`.
 
 The write endpoint is deliberately constrained to `custom-rules/user`. Add `custom-rules/user` or an individual saved file to `customRules` before a report refresh if you want saved rules loaded by default.
@@ -366,7 +366,7 @@ Configured custom rule packs are cached by file content hash, so editing or savi
 - Write requests with bodies must send `Content-Type: application/json` or another `+json` media type. Malformed JSON returns `400 invalid_json`; valid JSON that is not an object returns `400 invalid_request_body`; missing/non-JSON content types return `415 unsupported_media_type`; oversized bodies return `413 request_too_large`.
 - The API process refuses non-local bind hosts and only supports a single local user/workspace.
 - The local static server reads `.cache/api-server.json` when `API_TARGET` is not set, so it can follow the API if the API had to choose a fallback port. It only trusts state with `status: "running"`, a local HTTP URL, and a successful lightweight `/api/refresh` probe; stopped, stale, corrupt, or remote state falls back to `http://127.0.0.1:8787`. The API process writes a versioned state file (`schema.name: minecraft-log-observatory-api-server-state`, `contractVersion: 1`) with host, port, URL, PID, local-only policy, useful endpoint paths, and shutdown capabilities. During graceful shutdown by `SIGINT`, `SIGTERM`, or an IPC `{ "type": "shutdown" }` / `{ "type": "mlo_shutdown" }` message from a launcher, it best-effort rewrites the same state file with `status: "stopped"`, `stoppedAt`, and `signal`.
-- Paths and output names come from merged config: `minecraft-log-observatory.config.json` plus optional local `minecraft-log-observatory.local.json`; API-written local config overlays and report/summary output names are constrained to safe local targets only.
+- Paths and output names come from merged config: `minecraft-log-resolver.config.json` plus optional local `minecraft-log-resolver.local.json`; API-written local config overlays and report/summary output names are constrained to safe local targets only.
 - App status compares report input signatures against the current roots, selected rules, owner aliases, bundled rule file hashes, and custom rule file hashes so app/rule updates or edited custom rule packs can trigger `needsRefresh`.
 - After `POST /api/data/cleanup`, use `GET /api/app/status` to confirm `refreshReasons`, then `POST /api/refresh` to regenerate report and store outputs from the original read-only logs.
 - Querying before `npm run report` returns `503 report_not_ready`.

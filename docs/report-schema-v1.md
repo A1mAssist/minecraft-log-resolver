@@ -215,9 +215,9 @@ The report CLI also supports `--unmatched-out <file>` to write a compact rule-de
 
 ## Configuration
 
-The default shareable config file is `minecraft-log-observatory.config.json`.
+The default shareable config file is `minecraft-log-resolver.config.json`.
 
-The loader also reads `minecraft-log-observatory.local.json` beside it when present, or the path named by top-level `localConfig`. This local file is for machine-specific values such as `.minecraft` roots and owner aliases. It should not be committed or shared.
+The loader also reads `minecraft-log-resolver.local.json` beside it when present, or the path named by top-level `localConfig`. This local file is for machine-specific values such as `.minecraft` roots and owner aliases. It should not be committed or shared.
 
 Supported fields:
 

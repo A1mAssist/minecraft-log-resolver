@@ -1,4 +1,4 @@
-# Minecraft Log Observatory
+# Minecraft Log Resolver
 
 Local offline Minecraft log analytics for one user on one machine.
 
@@ -53,25 +53,25 @@ POST /api/refresh/cancel
 Shared config:
 
 ```text
-minecraft-log-observatory.config.json
+minecraft-log-resolver.config.json
 ```
 
 Machine-private config:
 
 ```text
-minecraft-log-observatory.local.json
+minecraft-log-resolver.local.json
 ```
 
 Do not put local paths, account aliases, or private directories in the shared config. Copy the example file:
 
 ```text
-minecraft-log-observatory.local.example.json
+minecraft-log-resolver.local.example.json
 ```
 
 to:
 
 ```text
-minecraft-log-observatory.local.json
+minecraft-log-resolver.local.json
 ```
 
 Example:
@@ -163,7 +163,7 @@ Build a Windows double-click launcher:
 npm.cmd run build:windows-exe
 ```
 
-The bundle is written to `dist/local-desktop` and includes `MinecraftLogObservatory.exe`. The executable starts the local API and static dashboard directly; users do not run npm.
+The bundle is written to `dist/local-desktop` and includes `MinecraftLogResolver.exe`. The executable starts the local API and static dashboard directly; users do not run npm.
 
 Build the no-port Tauri desktop bundle:
 
@@ -172,9 +172,9 @@ npm.cmd run tauri:build -- --no-bundle
 npm.cmd run build:tauri-portable
 ```
 
-The bundle is written to `dist/tauri-desktop` and includes `MinecraftLogObservatory.exe`. This edition uses Tauri IPC between the WebView UI and the in-process Rust backend, so it does not bind `127.0.0.1` HTTP ports.
+The bundle is written to `dist/tauri-desktop` and includes `MinecraftLogResolver.exe`. This edition uses Tauri IPC between the WebView UI and the in-process Rust backend, so it does not bind `127.0.0.1` HTTP ports.
 
-The `v0.3.0` Tauri edition handles dashboard read APIs in Rust. It does not copy a Node.js runtime, does not start `node.exe`, and does not bind localhost ports. Refresh, parser, config writes, and rule editing are still legacy JavaScript backend features and return `not_implemented_in_rust_backend` in the pure Rust runtime until they are ported.
+The `v0.3.1` Tauri edition handles dashboard read APIs in Rust. It does not copy a Node.js runtime, does not start `node.exe`, and does not bind localhost ports. Refresh, parser, config writes, and rule editing are still legacy JavaScript backend features and return `not_implemented_in_rust_backend` in the pure Rust runtime until they are ported.
 
 Derived-data cleanup:
 
@@ -241,7 +241,7 @@ docs/store.md
 
 Do not share these local files directly:
 
-- `minecraft-log-observatory.local.json`
+- `minecraft-log-resolver.local.json`
 - `.cache/`
 - `report-combined.json`
 - `report-combined-summary.json`

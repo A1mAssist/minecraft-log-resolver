@@ -16,8 +16,8 @@ const includedFiles = [
   "start.bat",
   "stop.bat",
   "index.html",
-  "minecraft-log-observatory.config.json",
-  "minecraft-log-observatory.local.example.json",
+  "minecraft-log-resolver.config.json",
+  "minecraft-log-resolver.local.example.json",
 ];
 const optionalFiles = [
   "package-lock.json",
@@ -41,7 +41,7 @@ const excludedDirs = new Set([
 
 const manifest = {
   schema: {
-    name: "minecraft-log-observatory-local-desktop-bundle",
+    name: "minecraft-log-resolver-local-desktop-bundle",
     version: 1,
   },
   generatedAt: new Date().toISOString(),
@@ -161,7 +161,7 @@ async function writeLaunchers() {
     "  pause",
     "  exit /b 1",
     ")",
-    "echo Starting Minecraft Log Observatory...",
+    "echo Starting Minecraft Log Resolver...",
     "start \"MLO API\" /min \"%NODE_EXE%\" scripts/api.mjs --port 8787",
     "timeout /t 1 /nobreak >nul",
     "start \"MLO Frontend\" /min \"%NODE_EXE%\" scripts/serve.mjs",
@@ -177,7 +177,7 @@ async function writeLaunchers() {
   const stop = [
     "@echo off",
     "setlocal",
-    "echo Stopping Minecraft Log Observatory services...",
+    "echo Stopping Minecraft Log Resolver services...",
     "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*scripts/api.mjs*' -or $_.CommandLine -like '*scripts/serve.mjs*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; Write-Host ('Stopped PID ' + $_.ProcessId) }\"",
     "echo Done.",
     "",

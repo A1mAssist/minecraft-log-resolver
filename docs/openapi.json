@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Minecraft Log Observatory API",
+    "title": "Minecraft Log Resolver API",
     "version": "0.1.0",
     "description": "Local API for generated Minecraft log reports, split report store metadata, refresh jobs, and rule-editor support."
   },

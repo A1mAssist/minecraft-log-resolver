@@ -9,6 +9,11 @@ use std::{
 };
 use url::Url;
 
+const CONFIG_FILE_NAME: &str = "minecraft-log-resolver.config.json";
+const LOCAL_CONFIG_FILE_NAME: &str = "minecraft-log-resolver.local.json";
+const LEGACY_CONFIG_FILE_NAME: &str = "minecraft-log-observatory.config.json";
+const LEGACY_LOCAL_CONFIG_FILE_NAME: &str = "minecraft-log-observatory.local.json";
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ApiRequest {
@@ -40,26 +45,19 @@ struct AppContext {
 #[tauri::command]
 fn api_request(request: ApiRequest) -> Result<ApiResponse, String> {
     let _ = &request.body;
-    let context = match AppContext::discover() {
-        Ok(context) => context,
-        Err(error) => {
-            return Ok(error_response(
-                500,
-                "app_root_not_found",
-                "The Tauri runtime could not locate the application root.",
-                json!({ "details": error }),
-            ));
-        }
-    };
+    let context = AppContext::discover();
     Ok(route_api(&context, request))
 }
 
 impl AppContext {
-    fn discover() -> Result<Self, String> {
-        let root = find_app_root()?;
-        let config_path = root.join("minecraft-log-observatory.config.json");
-        let local_config_path = root.join("minecraft-log-observatory.local.json");
-        let mut config = read_json_file(&config_path).unwrap_or_else(|_| json!({}));
+    fn discover() -> Self {
+        let root = find_app_root().unwrap_or_else(fallback_app_root);
+        let config_path = preferred_config_path(&root);
+        let local_config_path = preferred_local_config_path(&root);
+        let mut config = default_config();
+        if let Ok(file_config) = read_json_file(&config_path) {
+            merge_json(&mut config, file_config);
+        }
         let local_config_exists = local_config_path.is_file();
         if local_config_exists {
             if let Ok(local_config) = read_json_file(&local_config_path) {
@@ -82,7 +80,7 @@ impl AppContext {
         );
         let store_dir = data_dir.join("report-store");
 
-        Ok(Self {
+        Self {
             root,
             config_path,
             local_config_path,
@@ -92,7 +90,7 @@ impl AppContext {
             store_dir,
             report_path,
             summary_path,
-        })
+        }
     }
 }
 
@@ -1248,6 +1246,54 @@ fn read_json_file(path: &Path) -> Result<Value, String> {
     serde_json::from_str(&text).map_err(|error| error.to_string())
 }
 
+fn default_config() -> Value {
+    json!({
+      "roots": [],
+      "encoding": "gb18030",
+      "rules": [],
+      "customRules": [],
+      "scopes": [],
+      "unmatchedTemplatesLimit": 50,
+      "owner": {
+        "mode": "all_local_users",
+        "displayName": "Owner",
+        "aliases": []
+      },
+      "app": {
+        "dataDir": "data",
+        "skinProxyEnabled": true
+      },
+      "outputs": {
+        "report": "report-combined.json",
+        "summary": "report-combined-summary.json"
+      }
+    })
+}
+
+fn preferred_config_path(root: &Path) -> PathBuf {
+    let current = root.join(CONFIG_FILE_NAME);
+    if current.is_file() {
+        return current;
+    }
+    let legacy = root.join(LEGACY_CONFIG_FILE_NAME);
+    if legacy.is_file() {
+        return legacy;
+    }
+    current
+}
+
+fn preferred_local_config_path(root: &Path) -> PathBuf {
+    let current = root.join(LOCAL_CONFIG_FILE_NAME);
+    if current.is_file() {
+        return current;
+    }
+    let legacy = root.join(LEGACY_LOCAL_CONFIG_FILE_NAME);
+    if legacy.is_file() {
+        return legacy;
+    }
+    current
+}
+
 fn resolve_app_path(root: &Path, value: &str) -> PathBuf {
     let path = PathBuf::from(value);
     if path.is_absolute() {
@@ -1282,11 +1328,11 @@ fn percent_decode(value: &str) -> String {
         .join("&")
 }
 
-fn find_app_root() -> Result<PathBuf, String> {
-    if let Ok(value) = env::var("MLO_ROOT") {
+fn find_app_root() -> Option<PathBuf> {
+    if let Ok(value) = env::var("MLR_ROOT").or_else(|_| env::var("MLO_ROOT")) {
         let path = PathBuf::from(value);
         if is_app_root(&path) {
-            return Ok(path);
+            return Some(path);
         }
     }
 
@@ -1303,20 +1349,26 @@ fn find_app_root() -> Result<PathBuf, String> {
     for candidate in candidates {
         for path in candidate.ancestors() {
             if is_app_root(path) {
-                return Ok(path.to_path_buf());
+                return Some(path.to_path_buf());
             }
         }
     }
 
-    Err(
-        "Could not locate an app root containing minecraft-log-observatory.config.json."
-            .to_string(),
-    )
+    None
+}
+
+fn fallback_app_root() -> PathBuf {
+    env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .or_else(|| env::current_dir().ok())
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn is_app_root(path: &Path) -> bool {
-    path.join("minecraft-log-observatory.config.json").is_file()
-        && path.join("index.html").is_file()
+    path.join(CONFIG_FILE_NAME).is_file()
+        || path.join(LEGACY_CONFIG_FILE_NAME).is_file()
+        || path.join("index.html").is_file()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
