@@ -415,19 +415,26 @@ fn save_config_response(context: &AppContext, body: &Value) -> ApiResponse {
             json!({}),
         );
     }
-    if body.get("roots").is_some() {
-        let roots = match roots_from_body(body) {
-            Ok(roots) => roots,
-            Err(response) => return response,
-        };
-        let validation = validate_log_roots(context, &roots);
-        if validation["ok"].as_bool() != Some(true) {
-            return json_response(400, validation);
-        }
+
+    let (sanitized, errors) = sanitize_local_config_patch(context, body);
+    if !errors.is_empty() {
+        return error_response(
+            400,
+            "invalid_config",
+            "Local config contains unsupported or invalid values.",
+            json!({ "errors": errors }),
+        );
     }
 
-    let mut local_config = read_json_file(&context.local_config_path).unwrap_or_else(|_| json!({}));
-    merge_json(&mut local_config, body.clone());
+    if let Err(reason) = validate_local_config_write_target(context) {
+        return error_response(
+            400,
+            "unsafe_local_config_path",
+            "The configured local overlay path is not writable by the local API policy.",
+            json!({ "reason": reason, "localConfigPath": path_string(&context.local_config_path) }),
+        );
+    }
+
     if let Some(parent) = context.local_config_path.parent() {
         if let Err(error) = fs::create_dir_all(parent) {
             return error_response(
@@ -438,7 +445,7 @@ fn save_config_response(context: &AppContext, body: &Value) -> ApiResponse {
             );
         }
     }
-    let text = match serde_json::to_string_pretty(&local_config) {
+    let text = match serde_json::to_string_pretty(&sanitized) {
         Ok(text) => format!("{text}\n"),
         Err(error) => {
             return error_response(
@@ -467,6 +474,367 @@ fn save_config_response(context: &AppContext, body: &Value) -> ApiResponse {
           "effective": updated.config,
         }),
     )
+}
+
+fn sanitize_local_config_patch(context: &AppContext, body: &Value) -> (Value, Vec<Value>) {
+    let mut errors = Vec::new();
+    let mut next = read_json_file(&context.local_config_path).unwrap_or_else(|_| json!({}));
+    if !next.is_object() {
+        next = json!({});
+    }
+    let Some(body_object) = body.as_object() else {
+        return (
+            next,
+            vec![json!({ "field": "$", "error": "expected_object" })],
+        );
+    };
+
+    for key in body_object.keys() {
+        if !matches!(
+            key.as_str(),
+            "roots" | "owner" | "customRules" | "app" | "outputs"
+        ) {
+            errors.push(json!({ "field": key, "error": "unsupported_field" }));
+        }
+    }
+
+    if body_object.contains_key("roots") {
+        match string_array_field(body, "roots") {
+            Ok(values) => {
+                let roots = unique_strings(
+                    values
+                        .into_iter()
+                        .map(|value| value.trim().to_string())
+                        .filter(|value| !value.is_empty()),
+                );
+                if !roots.is_empty() {
+                    let validation = validate_log_roots(context, &roots);
+                    if validation["ok"].as_bool() != Some(true) {
+                        errors.push(json!({ "field": "roots", "error": "invalid_roots", "roots": validation["roots"].clone() }));
+                    }
+                }
+                set_object_key(&mut next, "roots", json!(roots));
+            }
+            Err(error) => errors.push(error),
+        }
+    }
+
+    if let Some(owner_value) = body.get("owner") {
+        if !owner_value.is_object() || owner_value.is_array() {
+            errors.push(json!({ "field": "owner", "error": "expected_object" }));
+        } else {
+            let mut owner = next
+                .get("owner")
+                .cloned()
+                .filter(Value::is_object)
+                .unwrap_or_else(|| json!({}));
+            if let Some(owner_object) = owner_value.as_object() {
+                for key in owner_object.keys() {
+                    if !matches!(key.as_str(), "aliases" | "displayName") {
+                        errors.push(json!({ "field": format!("owner.{key}"), "error": "unsupported_field" }));
+                    }
+                }
+            }
+            if owner_value.get("aliases").is_some() {
+                match string_array_field(owner_value, "aliases") {
+                    Ok(values) => set_object_key(
+                        &mut owner,
+                        "aliases",
+                        json!(unique_strings(
+                            values
+                                .into_iter()
+                                .map(|value| value.trim().to_string())
+                                .filter(|value| !value.is_empty())
+                        )),
+                    ),
+                    Err(_) => errors.push(
+                        json!({ "field": "owner.aliases", "error": "expected_string_array" }),
+                    ),
+                }
+            }
+            if let Some(display_name) = owner_value.get("displayName") {
+                match display_name.as_str().map(str::trim).filter(|value| !value.is_empty()) {
+                    Some(value) => set_object_key(&mut owner, "displayName", json!(value)),
+                    None => errors.push(json!({ "field": "owner.displayName", "error": "expected_non_empty_string" })),
+                }
+            }
+            set_object_key(&mut next, "owner", owner);
+        }
+    }
+
+    if body_object.contains_key("customRules") {
+        match string_array_field(body, "customRules") {
+            Ok(values) => {
+                let custom_rules = unique_strings(
+                    values
+                        .into_iter()
+                        .map(|value| value.trim().to_string())
+                        .filter(|value| !value.is_empty()),
+                );
+                let roots = next
+                    .get("roots")
+                    .and_then(Value::as_array)
+                    .map(|items| {
+                        items
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_string)
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_else(|| config_roots(&context.config));
+                for custom_rule in &custom_rules {
+                    if let Err(error) = validate_api_custom_rule_path(context, custom_rule, &roots)
+                    {
+                        errors.push(
+                            json!({ "field": "customRules", "value": custom_rule, "error": error }),
+                        );
+                    }
+                }
+                set_object_key(&mut next, "customRules", json!(custom_rules));
+            }
+            Err(error) => errors.push(error),
+        }
+    }
+
+    if let Some(app_value) = body.get("app") {
+        if !app_value.is_object() || app_value.is_array() {
+            errors.push(json!({ "field": "app", "error": "expected_object" }));
+        } else {
+            let mut app = next
+                .get("app")
+                .cloned()
+                .filter(Value::is_object)
+                .unwrap_or_else(|| json!({}));
+            let roots = next
+                .get("roots")
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_else(|| config_roots(&context.config));
+            if let Some(app_object) = app_value.as_object() {
+                for key in app_object.keys() {
+                    if !matches!(key.as_str(), "dataDir" | "skinProxyEnabled") {
+                        errors.push(
+                            json!({ "field": format!("app.{key}"), "error": "unsupported_field" }),
+                        );
+                    }
+                }
+            }
+            if let Some(data_dir) = app_value.get("dataDir") {
+                match data_dir
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    Some(value) => match validate_api_data_dir_path(context, value, &roots) {
+                        Ok(value) => set_object_key(&mut app, "dataDir", json!(value)),
+                        Err(error) => {
+                            errors.push(json!({ "field": "app.dataDir", "error": error }))
+                        }
+                    },
+                    None => errors.push(
+                        json!({ "field": "app.dataDir", "error": "expected_non_empty_string" }),
+                    ),
+                }
+            }
+            if let Some(enabled) = app_value.get("skinProxyEnabled") {
+                match enabled.as_bool() {
+                    Some(value) => set_object_key(&mut app, "skinProxyEnabled", json!(value)),
+                    None => errors.push(
+                        json!({ "field": "app.skinProxyEnabled", "error": "expected_boolean" }),
+                    ),
+                }
+            }
+            set_object_key(&mut next, "app", app);
+        }
+    }
+
+    if let Some(outputs_value) = body.get("outputs") {
+        if !outputs_value.is_object() || outputs_value.is_array() {
+            errors.push(json!({ "field": "outputs", "error": "expected_object" }));
+        } else {
+            let mut outputs = next
+                .get("outputs")
+                .cloned()
+                .filter(Value::is_object)
+                .unwrap_or_else(|| json!({}));
+            if let Some(outputs_object) = outputs_value.as_object() {
+                for key in outputs_object.keys() {
+                    if !matches!(key.as_str(), "report" | "summary") {
+                        errors.push(json!({ "field": format!("outputs.{key}"), "error": "unsupported_field" }));
+                    }
+                }
+            }
+            for key in ["report", "summary"] {
+                if let Some(value) = outputs_value.get(key) {
+                    match value.as_str().map(str::trim).filter(|value| !value.is_empty()) {
+                        Some(raw) => match validate_api_output_path(context, raw) {
+                            Ok(value) => set_object_key(&mut outputs, key, json!(value)),
+                            Err(error) => errors.push(json!({ "field": format!("outputs.{key}"), "error": error })),
+                        },
+                        None => errors.push(json!({ "field": format!("outputs.{key}"), "error": "must_be_project_relative_json_path" })),
+                    }
+                }
+            }
+            let effective_report = outputs
+                .get("report")
+                .and_then(Value::as_str)
+                .or_else(|| get_path_string(&context.config, &["outputs", "report"]))
+                .unwrap_or("report-combined.json");
+            let effective_summary = outputs
+                .get("summary")
+                .and_then(Value::as_str)
+                .or_else(|| get_path_string(&context.config, &["outputs", "summary"]))
+                .unwrap_or("report-combined-summary.json");
+            if same_resolved_path(
+                &resolve_app_path(&context.root, effective_report),
+                &resolve_app_path(&context.root, effective_summary),
+            ) {
+                errors.push(
+                    json!({ "field": "outputs", "error": "report_summary_must_be_distinct" }),
+                );
+            }
+            set_object_key(&mut next, "outputs", outputs);
+        }
+    }
+
+    (next, errors)
+}
+
+fn string_array_field(value: &Value, field: &str) -> Result<Vec<String>, Value> {
+    value
+        .get(field)
+        .and_then(Value::as_array)
+        .filter(|items| items.iter().all(Value::is_string))
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .ok_or_else(|| json!({ "field": field, "error": "expected_string_array" }))
+}
+
+fn unique_strings(values: impl Iterator<Item = String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut output = Vec::new();
+    for value in values {
+        if seen.insert(value.clone()) {
+            output.push(value);
+        }
+    }
+    output
+}
+
+fn set_object_key(target: &mut Value, key: &str, value: Value) {
+    if !target.is_object() {
+        *target = json!({});
+    }
+    if let Some(object) = target.as_object_mut() {
+        object.insert(key.to_string(), value);
+    }
+}
+
+fn validate_local_config_write_target(context: &AppContext) -> Result<(), String> {
+    let Some(parent) = context.local_config_path.parent() else {
+        return Err("local_config_missing_parent".to_string());
+    };
+    if !same_resolved_path(parent, &context.root) {
+        return Err("local_config_outside_config_dir".to_string());
+    }
+    if same_resolved_path(&context.local_config_path, &context.config_path) {
+        return Err("local_config_overwrites_shareable_config".to_string());
+    }
+    if is_inside_configured_log_root(context, &context.local_config_path) {
+        return Err("target_inside_minecraft_root".to_string());
+    }
+    if is_reserved_project_relative_target(context, &context.local_config_path) {
+        return Err("local_config_reserved_project_path".to_string());
+    }
+    Ok(())
+}
+
+fn validate_api_data_dir_path(
+    context: &AppContext,
+    value: &str,
+    roots: &[String],
+) -> Result<String, String> {
+    let trimmed = value.trim();
+    if !is_safe_relative_path(trimmed) {
+        return Err("must_be_project_relative_path".to_string());
+    }
+    let resolved = resolve_app_path(&context.root, trimmed);
+    if same_resolved_path(&resolved, &context.config_path)
+        || same_resolved_path(&resolved, &context.local_config_path)
+    {
+        return Err("must_target_derived_data_dir".to_string());
+    }
+    if is_inside_log_root(context, &resolved, roots) {
+        return Err("must_not_be_inside_minecraft_root".to_string());
+    }
+    if is_reserved_project_relative_target(context, &resolved) {
+        return Err("must_target_derived_data_dir".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn validate_api_custom_rule_path(
+    context: &AppContext,
+    value: &str,
+    roots: &[String],
+) -> Result<String, String> {
+    let trimmed = value.trim();
+    if !is_safe_relative_path(trimmed) {
+        return Err("must_be_project_relative_path".to_string());
+    }
+    let resolved = resolve_app_path(&context.root, trimmed);
+    if same_resolved_path(&resolved, &context.config_path)
+        || same_resolved_path(&resolved, &context.local_config_path)
+    {
+        return Err("must_target_rule_pack_path".to_string());
+    }
+    if is_inside_log_root(context, &resolved, roots) {
+        return Err("must_not_be_inside_minecraft_root".to_string());
+    }
+    if path_is_same_or_inside(&resolved, &context.data_dir) {
+        return Err("must_target_rule_pack_path".to_string());
+    }
+    if is_reserved_custom_rule_target(context, &resolved) {
+        return Err("must_target_rule_pack_path".to_string());
+    }
+    if let Some(extension) = Path::new(trimmed)
+        .extension()
+        .and_then(|value| value.to_str())
+    {
+        if !extension.eq_ignore_ascii_case("json") {
+            return Err("must_be_rule_pack_json_or_directory".to_string());
+        }
+    }
+    Ok(trimmed.to_string())
+}
+
+fn validate_api_output_path(context: &AppContext, value: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if !is_safe_relative_path(trimmed) || !trimmed.to_ascii_lowercase().ends_with(".json") {
+        return Err("must_be_project_relative_json_path".to_string());
+    }
+    if is_reserved_api_output_path(context, trimmed) {
+        return Err("must_target_derived_output_path".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn is_reserved_api_output_path(context: &AppContext, relative_path: &str) -> bool {
+    let resolved = resolve_app_path(&context.root, relative_path);
+    same_resolved_path(&resolved, &context.config_path)
+        || same_resolved_path(&resolved, &context.local_config_path)
+        || reserved_project_relative_segments(context, &resolved, true)
 }
 
 fn refresh_response() -> ApiResponse {
@@ -2784,37 +3152,165 @@ fn label_game_mode(id: &str) -> String {
 }
 
 fn cleanup_response(context: &AppContext, body: &Value) -> ApiResponse {
-    let dry_run = body
-        .get("dryRun")
-        .or_else(|| body.get("dry_run"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let targets = [
-        ("report", context.report_path.clone()),
-        ("summary", context.summary_path.clone()),
-        ("unmatched", context.unmatched_path.clone()),
-        ("store", context.store_dir.clone()),
-    ];
+    let scope = match body.get("scope") {
+        Some(Value::String(value)) => value.as_str(),
+        Some(_) => {
+            return error_response(
+                400,
+                "invalid_cleanup_scope",
+                "Cleanup scope must be cache, report, store, or all_derived.",
+                json!({ "allowed": ["cache", "report", "store", "all_derived"] }),
+            )
+        }
+        None => "cache",
+    };
+    if !matches!(scope, "cache" | "report" | "store" | "all_derived") {
+        return error_response(
+            400,
+            "invalid_cleanup_scope",
+            "Cleanup scope must be cache, report, store, or all_derived.",
+            json!({ "allowed": ["cache", "report", "store", "all_derived"] }),
+        );
+    }
+    let dry_run = match body.get("dryRun").or_else(|| body.get("dry_run")) {
+        Some(Value::Bool(value)) => *value,
+        Some(_) => {
+            return error_response(
+                400,
+                "invalid_cleanup_dry_run",
+                "cleanup dryRun must be a boolean when provided.",
+                json!({}),
+            )
+        }
+        None => false,
+    };
+    let targets = cleanup_targets(context, scope);
     let mut planned = Vec::new();
     let mut removed = Vec::new();
+    let mut skipped = Vec::new();
     for (kind, path) in targets {
+        if let Err(reason) = validate_derived_target(context, &path) {
+            skipped.push(json!({ "kind": kind, "path": path_string(&path), "reason": reason }));
+            continue;
+        }
         let exists = path.exists();
-        planned.push(json!({ "kind": kind, "path": path_string(&path), "exists": exists }));
+        let kind_text = if path.is_dir() {
+            Some("directory")
+        } else if path.is_file() {
+            Some("file")
+        } else {
+            None
+        };
+        let bytes = if path.is_file() {
+            path.metadata().ok().map(|metadata| metadata.len())
+        } else {
+            None
+        };
+        planned.push(json!({ "kind": kind, "path": path_string(&path), "exists": exists, "type": kind_text, "bytes": bytes }));
         if exists && !dry_run {
             let result = if path.is_dir() {
                 fs::remove_dir_all(&path)
             } else {
                 fs::remove_file(&path)
             };
-            if result.is_ok() {
-                removed.push(json!({ "kind": kind, "path": path_string(&path) }));
+            match result {
+                Ok(()) => removed.push(json!({ "kind": kind, "path": path_string(&path) })),
+                Err(error) => skipped.push(json!({ "kind": kind, "path": path_string(&path), "reason": error.to_string() })),
             }
         }
     }
+    let note = if dry_run {
+        "Dry run only; no derived report/cache/store/history files were removed."
+    } else {
+        "Only derived report/cache/store/history files are eligible for cleanup; configured Minecraft roots are never deleted."
+    };
     json_response(
         200,
-        json!({ "ok": true, "dryRun": dry_run, "planned": planned, "removed": removed }),
+        json!({ "ok": true, "scope": scope, "dryRun": dry_run, "planned": planned, "removed": removed, "skipped": skipped, "note": note }),
     )
+}
+
+fn cleanup_targets(context: &AppContext, scope: &str) -> Vec<(&'static str, PathBuf)> {
+    let cache_targets = vec![
+        (
+            "parse_cache",
+            resolve_app_path(
+                &context.root,
+                get_path_string(&context.config, &["cache", "parse"])
+                    .unwrap_or(".cache/parse-cache.json"),
+            ),
+        ),
+        (
+            "chat_cache",
+            resolve_app_path(
+                &context.root,
+                get_path_string(&context.config, &["cache", "chat"])
+                    .unwrap_or(".cache/chat-event-cache.json"),
+            ),
+        ),
+        (
+            "chat_lines_cache",
+            resolve_app_path(
+                &context.root,
+                get_path_string(&context.config, &["cache", "chatLines"])
+                    .unwrap_or(".cache/chat-lines-cache.json"),
+            ),
+        ),
+        (
+            "refresh_history",
+            resolve_app_path(&context.root, ".cache/refresh-history.json"),
+        ),
+        (
+            "rule_audit_history",
+            context.data_dir.join("rules-audit-history.json"),
+        ),
+        (
+            "unknown_audit_label_sets",
+            context.data_dir.join("unknown-audit-label-sets"),
+        ),
+        (
+            "store_read_metrics",
+            context.data_dir.join("store-read-metrics.json"),
+        ),
+    ];
+    let report_targets = vec![
+        ("report", context.report_path.clone()),
+        ("summary", context.summary_path.clone()),
+        ("unmatched_debug", context.unmatched_path.clone()),
+        (
+            "result_candidates",
+            resolve_app_path(&context.root, "result-candidates.json"),
+        ),
+    ];
+    let store_targets = vec![("store", context.store_dir.clone())];
+    match scope {
+        "cache" => cache_targets,
+        "report" => report_targets,
+        "store" => store_targets,
+        _ => cache_targets
+            .into_iter()
+            .chain(report_targets)
+            .chain(store_targets)
+            .collect(),
+    }
+}
+
+fn validate_derived_target(context: &AppContext, target: &Path) -> Result<(), String> {
+    if is_inside_configured_log_root(context, target) {
+        return Err("target_inside_minecraft_root".to_string());
+    }
+    if is_reserved_project_resolved_path(context, target) {
+        return Err("target_reserved_project_path".to_string());
+    }
+    let allowed = cleanup_targets(context, "all_derived");
+    if allowed
+        .iter()
+        .any(|(_, allowed_path)| path_is_same_or_inside(target, allowed_path))
+    {
+        Ok(())
+    } else {
+        Err("target_not_derived".to_string())
+    }
 }
 
 fn diagnostics_response(context: &AppContext) -> ApiResponse {
@@ -3393,82 +3889,27 @@ fn rule_validate_response(body: &Value) -> ApiResponse {
     )
 }
 
-fn rules_dry_run_response(context: &AppContext, body: &Value) -> ApiResponse {
-    let validation = if let Some(rule_pack) = body.get("rulePack") {
-        validate_rule_pack(rule_pack)
-    } else {
-        validate_rule_pack(body)
-    };
-    json_response(
-        if validation.is_empty() { 200 } else { 400 },
-        json!({
-          "ok": validation.is_empty(),
-          "promotionGate": {
-            "ready": validation.is_empty(),
-            "blocking": validation,
-            "warnings": []
-          },
-          "summary": {
-            "checkedRules": body.get("rulePack").or(Some(body)).and_then(|value| value.get("rules")).and_then(Value::as_array).map(Vec::len).unwrap_or(0),
-            "sampledRounds": read_round_rows(context, "all").map(|rows| rows.len()).unwrap_or(0)
-          },
-          "matches": []
-        }),
-    )
+fn rules_dry_run_response(_context: &AppContext, _body: &Value) -> ApiResponse {
+    advanced_rules_not_migrated_response("rules_dry_run")
 }
 
-fn rules_audit_workflow_response(context: &AppContext, body: &Value) -> ApiResponse {
-    let target_mode = body
-        .get("targetMode")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-    let rows = body
-        .get("rows")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let sample = rows
-        .iter()
-        .find_map(|row| row.get("message").and_then(Value::as_str))
-        .unwrap_or("UNKNOWN RESULT");
-    json_response(
-        200,
-        json!({
-          "ok": true,
-          "targetMode": target_mode,
-          "draft": rule_draft_response(&json!({ "message": sample, "type": "round_end", "gameMode": target_mode })).body.get("rule").cloned().unwrap_or_else(|| json!({})),
-          "workflow": {
-            "status": "draft",
-            "nextActions": ["Validate the draft with POST /api/rules/validate.", "Preview impact with POST /api/rules/dry-run."]
-          },
-          "audit": rules_audit_response(context).body
-        }),
-    )
+fn rules_audit_workflow_response(_context: &AppContext, _body: &Value) -> ApiResponse {
+    advanced_rules_not_migrated_response("rules_audit_workflow")
 }
 
-fn rule_draft_from_labels_response(_context: &AppContext, body: &Value) -> ApiResponse {
-    let rows = body
-        .get("rows")
-        .or_else(|| body.get("labels"))
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    let target_mode = body
-        .get("targetMode")
-        .and_then(Value::as_str)
-        .unwrap_or("unknown");
-    json_response(
-        200,
+fn rule_draft_from_labels_response(_context: &AppContext, _body: &Value) -> ApiResponse {
+    advanced_rules_not_migrated_response("rule_draft_from_labels")
+}
+
+fn advanced_rules_not_migrated_response(feature: &str) -> ApiResponse {
+    error_response(
+        501,
+        "advanced_rules_workflow_not_migrated",
+        "This advanced rule-review workflow has not been migrated to the Rust Tauri backend yet.",
         json!({
-          "ok": true,
-          "targetMode": target_mode,
-          "rows": rows.len(),
-          "rulePack": {
-            "id": format!("draft-{}", target_mode),
-            "name": format!("Draft {}", label_game_mode(target_mode)),
-            "rules": []
-          },
-          "workflow": { "nextActions": ["Validate the draft with POST /api/rules/validate."] }
+          "feature": feature,
+          "runtime": "tauri-rust",
+          "safeFallback": "Use rule validation and normal refresh; this endpoint does not return placeholder success."
         }),
     )
 }
@@ -5029,6 +5470,11 @@ fn default_config() -> Value {
         "dataDir": "data",
         "skinProxyEnabled": true
       },
+      "cache": {
+        "parse": ".cache/parse-cache.json",
+        "chat": ".cache/chat-event-cache.json",
+        "chatLines": ".cache/chat-lines-cache.json"
+      },
       "outputs": {
         "report": "report-combined.json",
         "summary": "report-combined-summary.json"
@@ -5070,11 +5516,111 @@ fn resolve_app_path(root: &Path, value: &str) -> PathBuf {
 }
 
 fn is_safe_relative_path(value: &str) -> bool {
+    let value = value.trim();
+    if value.is_empty() || value.contains('\0') {
+        return false;
+    }
     let path = Path::new(value);
-    !path.is_absolute()
-        && path
-            .components()
-            .all(|component| matches!(component, Component::Normal(_) | Component::CurDir))
+    if path.is_absolute() {
+        return false;
+    }
+    let mut has_normal = false;
+    for component in path.components() {
+        match component {
+            Component::Normal(_) => has_normal = true,
+            Component::CurDir => {}
+            _ => return false,
+        }
+    }
+    has_normal
+}
+
+fn same_resolved_path(left: &Path, right: &Path) -> bool {
+    path_key(left) == path_key(right)
+}
+
+fn path_key(path: &Path) -> String {
+    path_string(path).replace('/', "\\").to_ascii_lowercase()
+}
+
+fn path_is_same_or_inside(child: &Path, parent: &Path) -> bool {
+    let child_key = path_key(child);
+    let mut parent_key = path_key(parent);
+    while parent_key.ends_with('\\') {
+        parent_key.pop();
+    }
+    child_key == parent_key || child_key.starts_with(&format!("{parent_key}\\"))
+}
+
+fn is_inside_configured_log_root(context: &AppContext, target: &Path) -> bool {
+    is_inside_log_root(context, target, &config_roots(&context.config))
+}
+
+fn is_inside_log_root(context: &AppContext, target: &Path, roots: &[String]) -> bool {
+    roots.iter().any(|root| {
+        let resolved = resolve_app_path(&context.root, root);
+        path_is_same_or_inside(target, &resolved)
+    })
+}
+
+fn is_reserved_project_resolved_path(context: &AppContext, target: &Path) -> bool {
+    same_resolved_path(target, &context.config_path)
+        || same_resolved_path(target, &context.local_config_path)
+        || is_reserved_project_relative_target(context, target)
+}
+
+fn is_reserved_project_relative_target(context: &AppContext, target: &Path) -> bool {
+    reserved_project_relative_segments(context, target, true)
+}
+
+fn is_reserved_custom_rule_target(context: &AppContext, target: &Path) -> bool {
+    reserved_project_relative_segments(context, target, false)
+}
+
+fn reserved_project_relative_segments(
+    context: &AppContext,
+    target: &Path,
+    include_custom_rules: bool,
+) -> bool {
+    if !path_is_same_or_inside(target, &context.root) {
+        return false;
+    }
+    let relative = match target.strip_prefix(&context.root) {
+        Ok(value) => value,
+        Err(_) => return false,
+    };
+    let segments: Vec<String> = relative
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(value) => Some(value.to_string_lossy().to_ascii_lowercase()),
+            _ => None,
+        })
+        .collect();
+    let Some(first) = segments.first().map(String::as_str) else {
+        return false;
+    };
+    let reserved_dir = if include_custom_rules {
+        matches!(
+            first,
+            ".agents"
+                | ".codex"
+                | ".git"
+                | "custom-rules"
+                | "docs"
+                | "node_modules"
+                | "scripts"
+                | "src"
+        )
+    } else {
+        matches!(
+            first,
+            ".agents" | ".codex" | ".git" | ".cache" | "docs" | "node_modules" | "scripts" | "src"
+        )
+    };
+    if reserved_dir {
+        return true;
+    }
+    segments.len() == 1 && matches!(first, "package.json" | "package-lock.json")
 }
 
 fn path_string(path: &Path) -> String {
@@ -5316,6 +5862,87 @@ mod tests {
         assert_eq!(
             invalid_share_package.body["error"],
             json!("invalid_boolean_query")
+        );
+
+        let cleanup_default = route_api(
+            &context,
+            ApiRequest {
+                method: "POST".to_string(),
+                url: "/api/data/cleanup".to_string(),
+                body: json!({ "dryRun": true }),
+            },
+        );
+        assert_eq!(cleanup_default.status, 200);
+        assert_eq!(cleanup_default.body["scope"], json!("cache"));
+        assert!(cleanup_default.body["planned"]
+            .as_array()
+            .expect("cleanup planned")
+            .iter()
+            .all(|item| item["kind"] != json!("report")));
+
+        let cleanup_report = route_api(
+            &context,
+            ApiRequest {
+                method: "POST".to_string(),
+                url: "/api/data/cleanup".to_string(),
+                body: json!({ "scope": "report", "dryRun": true }),
+            },
+        );
+        assert_eq!(cleanup_report.status, 200);
+        assert!(cleanup_report.body["planned"]
+            .as_array()
+            .expect("cleanup report planned")
+            .iter()
+            .any(|item| item["kind"] == json!("report")));
+
+        let invalid_cleanup = route_api(
+            &context,
+            ApiRequest {
+                method: "POST".to_string(),
+                url: "/api/data/cleanup".to_string(),
+                body: json!({ "scope": "everything" }),
+            },
+        );
+        assert_eq!(invalid_cleanup.status, 400);
+        assert_eq!(
+            invalid_cleanup.body["error"],
+            json!("invalid_cleanup_scope")
+        );
+
+        let invalid_config = route_api(
+            &context,
+            ApiRequest {
+                method: "PUT".to_string(),
+                url: "/api/config".to_string(),
+                body: json!({ "encoding": "utf-8" }),
+            },
+        );
+        assert_eq!(invalid_config.status, 400);
+        assert_eq!(invalid_config.body["error"], json!("invalid_config"));
+
+        let invalid_outputs = route_api(
+            &context,
+            ApiRequest {
+                method: "PUT".to_string(),
+                url: "/api/config".to_string(),
+                body: json!({ "outputs": { "report": "same.json", "summary": "same.json" } }),
+            },
+        );
+        assert_eq!(invalid_outputs.status, 400);
+        assert_eq!(invalid_outputs.body["error"], json!("invalid_config"));
+
+        let dry_run_rules = route_api(
+            &context,
+            ApiRequest {
+                method: "POST".to_string(),
+                url: "/api/rules/dry-run".to_string(),
+                body: json!({ "rules": [] }),
+            },
+        );
+        assert_eq!(dry_run_rules.status, 501);
+        assert_eq!(
+            dry_run_rules.body["error"],
+            json!("advanced_rules_workflow_not_migrated")
         );
 
         let _ = fs::remove_dir_all(root);
