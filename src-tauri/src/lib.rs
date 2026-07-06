@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use encoding_rs::{Encoding, UTF_8};
 use flate2::read::GzDecoder;
@@ -155,6 +157,9 @@ fn route_api(context: &AppContext, request: ApiRequest) -> ApiResponse {
         ("POST", "/api/unknown-audit/label-sets") => {
             return unknown_audit_label_sets_response(context, &request.body)
         }
+        ("PUT", _) if path.starts_with("/api/unknown-audit/label-sets/") => {
+            return unknown_audit_label_set_save_response(context, path, &request.body)
+        }
         ("POST", "/api/rule-packs/user") => {
             return user_rule_pack_save_response(context, &request.body)
         }
@@ -171,6 +176,9 @@ fn route_api(context: &AppContext, request: ApiRequest) -> ApiResponse {
     }
 
     if method != "GET" {
+        if method == "DELETE" && path.starts_with("/api/unknown-audit/label-sets/") {
+            return unknown_audit_label_set_delete_response(context, path);
+        }
         if method == "DELETE" && path.starts_with("/api/rule-packs/user/") {
             return user_rule_pack_delete_response(context, path);
         }
@@ -185,7 +193,7 @@ fn route_api(context: &AppContext, request: ApiRequest) -> ApiResponse {
     match path {
         "/api/health" => json_response(
             200,
-            json!({ "ok": true, "runtime": "tauri-rust", "tcpListeners": false }),
+            json!({ "ok": true, "schema": { "name": "minecraft-log-observatory-report", "version": 1 }, "runtime": "tauri-rust", "tcpListeners": false }),
         ),
         "/api/app/status" => app_status_response(context),
         "/api/config" => config_response(context),
@@ -194,11 +202,11 @@ fn route_api(context: &AppContext, request: ApiRequest) -> ApiResponse {
         "/api/refresh/preflight" => refresh_preflight_response(context),
         "/api/diagnostics" => diagnostics_response(context),
         "/api/diagnostics/package" => diagnostics_package_response(context),
-        "/api/share/package" => diagnostics_package_response(context),
+        "/api/share/package" => share_package_response(context, &url),
         "/api/performance" => performance_response(context),
         "/api/skin" => skin_response(),
         "/api/minecraft-profile" => minecraft_profile_response(&url),
-        "/api/metrics/definitions" => store_json_response(context, "metricDefinitions"),
+        "/api/metrics/definitions" => metric_definitions_response(context),
         "/api/report" => read_json_response(&context.report_path, "report_not_ready"),
         "/api/summary" => read_json_response(&context.summary_path, "summary_not_ready"),
         "/api/profile" => store_json_response(context, "profile"),
@@ -228,6 +236,9 @@ fn route_api(context: &AppContext, request: ApiRequest) -> ApiResponse {
         "/api/days" => jsonl_table_response(context, "byDay", &url, Some(filter_day_range)),
         "/api/unmatched" => unmatched_response(context),
         _ if path.starts_with("/api/accounts/") => account_detail_response(context, path),
+        _ if path.starts_with("/api/unknown-audit/label-sets/") => {
+            unknown_audit_label_set_detail_response(context, path)
+        }
         _ if path.starts_with("/api/rule-packs/user/") => {
             user_rule_pack_detail_response(context, path)
         }
@@ -486,6 +497,19 @@ fn refresh_body() -> Value {
       "error": null,
       "log": []
     })
+}
+
+fn metric_definitions_response(context: &AppContext) -> ApiResponse {
+    json_response(
+        200,
+        json!({
+          "ok": true,
+          "source": "static_backend_contract",
+          "runtime": "tauri-rust",
+          "reportReady": context.report_path.is_file() && context.summary_path.is_file(),
+          "metricDefinitions": metric_definitions_json()
+        }),
+    )
 }
 
 #[derive(Clone, Default)]
@@ -891,6 +915,9 @@ fn build_scan_outputs(context: &AppContext) -> Result<ScanOutput, String> {
                   "description": set.description,
                   "rules": set.rules.len(),
                   "source": "bundled",
+                  "path": set.file_name,
+                  "exists": true,
+                  "type": "embedded",
                   "filePath": set.file_name,
                 })
             })
@@ -1152,6 +1179,23 @@ fn apply_chat_event(
                 .map(|round| round.start_line)
                 .unwrap_or(event.line_no);
             let reliable = result == "win" || result == "loss";
+            let result_hint = json!({ "value": result, "reason": event.event_type });
+            let unknown_audit = if reliable {
+                Value::Null
+            } else {
+                json!({
+                  "category": "unknown",
+                  "reviewPriority": "medium",
+                  "reviewReason": "No safe win/loss evidence was matched by the Rust backend.",
+                  "nextAction": "label_sample",
+                  "features": {
+                    "hasStart": active.is_some(),
+                    "hasEnd": true,
+                    "durationSeconds": duration_seconds,
+                    "mode": mode
+                  }
+                })
+            };
             let round = json!({
               "key": format!("{}\0{}\0{}\0{}", file.source, file.scope, event.file_path, event.line_no),
               "source": active.as_ref().map(|round| round.source.as_str()).unwrap_or(&file.source),
@@ -1165,25 +1209,42 @@ fn apply_chat_event(
               "duration": format_duration(duration_seconds),
               "gameMode": mode,
               "mode": mode,
+              "roundKind": "match",
               "result": result,
               "resultEligible": reliable,
-              "resultHint": { "value": result, "reason": event.event_type },
+              "resultHint": result_hint,
               "endReason": event.event_type,
               "startLineNo": start_line,
               "endLineNo": event.line_no,
               "message": event.message,
+              "sessionAlias": "local",
+              "ownerAliasesUsed": [],
+              "launcherUser": "local",
+              "serverPlayerId": null,
+              "serverPlayerIds": [],
+              "serverPlayerIdSource": "unknown",
+              "serverPlayerIdConfidence": "unknown",
+              "serverNetwork": null,
+              "serverAddress": null,
+              "serverLabel": "Unknown",
+              "serverConfidence": "unknown",
+              "serverEvidence": { "source": "unknown" },
               "kills": kills,
               "deaths": deaths,
               "selfKills": kills,
               "selfDeaths": self_deaths,
+              "playerMaxKillStreak": 0,
+              "observedBroadcastMaxKillStreak": 0,
               "bedDestroys": bed_destroys,
               "selfBedDestroys": bed_destroys,
               "playerBedDestroys": bed_destroys,
-              "unknownAudit": {
-                "category": if reliable { "known_result" } else { "unknown" },
-                "reviewPriority": if reliable { "low" } else { "medium" },
-                "nextAction": if reliable { "none" } else { "review_result_rule" }
-              },
+              "rewardEvents": 0,
+              "streakPoints": 0,
+              "goldEarned": 0,
+              "xpEarned": 0,
+              "bountyClaims": 0,
+              "bountyGoldEarned": 0,
+              "unknownAudit": unknown_audit,
               "events": [],
               "resultEvidence": [{
                 "type": event.event_type,
@@ -1375,6 +1436,11 @@ fn build_report_json(context: &AppContext, output: &ScanOutput) -> Value {
     let by_month = month_rows(&by_day);
     let reliable = output.rounds.clone();
     let ignored = output.ignored_rounds.clone();
+    let all_rounds = reliable
+        .iter()
+        .cloned()
+        .chain(ignored.iter().cloned())
+        .collect::<Vec<_>>();
     let accounts = accounts_json(context, output);
     let profile = profile_json(&overview, &accounts, &by_day, &by_scope);
     json!({
@@ -1389,6 +1455,7 @@ fn build_report_json(context: &AppContext, output: &ScanOutput) -> Value {
         "encoding": get_path_string(&context.config, &["encoding"]).unwrap_or("gb18030"),
         "selectedRuleSets": [],
         "bundledRuleFiles": output.rule_sets,
+        "customRuleFiles": [],
         "customRulePaths": get_path_value(&context.config, &["customRules"]).cloned().unwrap_or_else(|| json!([])),
         "ownerAliases": get_path_value(&context.config, &["owner", "aliases"]).cloned().unwrap_or_else(|| json!([])),
         "ownerMode": get_path_string(&context.config, &["owner", "mode"]).unwrap_or("all_local_users")
@@ -1408,7 +1475,8 @@ fn build_report_json(context: &AppContext, output: &ScanOutput) -> Value {
         "summary": rounds_summary_json(output),
         "reliable": reliable,
         "ignored": ignored,
-        "allRef": "rounds.reliable + rounds.ignored"
+        "all": all_rounds,
+        "allRef": "rounds.all"
       },
       "accounts": accounts,
       "rules": {
@@ -1419,7 +1487,26 @@ fn build_report_json(context: &AppContext, output: &ScanOutput) -> Value {
         "byRuleId": {},
         "byRulePack": {},
         "byRulePackId": {},
-        "quality": { "totalRules": 0, "hitRules": 0, "zeroHitRules": 0, "byRiskGroup": {}, "byType": {}, "topHitRules": [] },
+        "quality": {
+          "totalRules": output.rule_sets.iter().map(|item| item.get("rules").and_then(Value::as_u64).unwrap_or(0)).sum::<u64>(),
+          "hitRules": output.rule_counts.len(),
+          "zeroHitRules": output.rule_sets.iter().map(|item| item.get("rules").and_then(Value::as_u64).unwrap_or(0)).sum::<u64>().saturating_sub(output.rule_counts.len() as u64),
+          "byRiskGroup": {},
+          "byType": {},
+          "byRuleSet": {},
+          "byRulePack": {},
+          "duplicatePatterns": [],
+          "topHitRules": [],
+          "zeroHitSamples": [],
+          "resultImpactRules": [],
+          "boundaryImpactRules": [],
+          "policy": {
+            "safe_result": "Rules that directly produce win/loss or are observed in result evidence.",
+            "boundary_only": "Rules that mainly create mode/boundary/population signals.",
+            "diagnostic_only": "Rules that enrich context without directly changing result statistics.",
+            "experimental": "Low-confidence or broad custom/unknown rules that need review before promotion."
+          }
+        },
         "chatLines": total_aggregate(&output.by_source).chat_lines,
         "matched": output.chat_matched,
         "unmatched": total_aggregate(&output.by_source).chat_lines.saturating_sub(output.chat_matched),
@@ -1431,7 +1518,7 @@ fn build_report_json(context: &AppContext, output: &ScanOutput) -> Value {
       "anomalies": anomalies_json(output),
       "raw": {
         "analysisSummaries": [],
-        "roundsRef": "rounds.reliable"
+        "roundsRef": "rounds.all"
       }
     })
 }
@@ -1455,6 +1542,7 @@ fn build_summary_json(report: &Value) -> Value {
       },
       "generatedAt": report.get("generatedAt").cloned().unwrap_or(Value::Null),
       "overview": report.get("overview").cloned().unwrap_or_else(|| json!({})),
+      "metricDefinitions": report.get("metricDefinitions").cloned().unwrap_or_else(metric_definitions_json),
       "confidence": report.get("confidence").cloned().unwrap_or_else(|| json!({})),
       "rounds": report.get("rounds").and_then(|rounds| rounds.get("summary")).cloned().unwrap_or_else(|| json!({})),
       "activity": report.get("activity").and_then(|activity| activity.get("summary")).cloned().unwrap_or_else(|| json!({})),
@@ -1644,19 +1732,29 @@ fn overview_json(output: &ScanOutput) -> Value {
       "files": total.files,
       "sizeMb": ((total.bytes as f64) / 1_000_000.0).round() as u64,
       "sessions": total.sessions,
+      "starts": total.sessions,
+      "connects": total.sessions,
       "runtime": format_duration(total.runtime_seconds),
+      "runtimeSeconds": total.runtime_seconds,
       "playtime": format_duration(total.playtime_seconds),
+      "playtimeSeconds": total.playtime_seconds,
       "multiplayer": format_duration(total.multiplayer_seconds),
+      "multiplayerSeconds": total.multiplayer_seconds,
       "singleplayer": format_duration(total.singleplayer_seconds),
+      "singleplayerSeconds": total.singleplayer_seconds,
       "chatLines": total.chat_lines,
       "chatMatched": output.chat_matched,
       "chatMatchRate": ratio(output.chat_matched, total.chat_lines),
       "crashes": total.crashes,
       "reliableRounds": reliable,
       "resultEligibleRounds": known + total.unknown_results,
+      "nonResultRounds": 0,
+      "notApplicableResults": 0,
       "roundDuration": format_duration(output.modes.values().map(|mode| mode.duration_seconds).sum::<i64>()),
+      "roundDurationSeconds": output.modes.values().map(|mode| mode.duration_seconds).sum::<i64>(),
       "wins": wins,
       "losses": losses,
+      "ambiguousResults": 0,
       "unknownResults": total.unknown_results,
       "knownResultRate": ratio(known, known + total.unknown_results),
       "winRate": ratio(wins, known),
@@ -1664,6 +1762,9 @@ fn overview_json(output: &ScanOutput) -> Value {
       "deaths": total.deaths,
       "selfKills": total.kills,
       "selfDeaths": total.deaths,
+      "bedDestroys": output.modes.values().map(|mode| mode.bed_destroys).sum::<u64>(),
+      "selfBedDestroys": output.modes.values().map(|mode| mode.self_bed_destroys).sum::<u64>(),
+      "playerBedDestroys": output.modes.values().map(|mode| mode.self_bed_destroys).sum::<u64>(),
       "playerMaxKillStreak": 0,
       "bestWinStreak": 0,
       "currentWinStreak": 0,
@@ -1685,14 +1786,19 @@ fn rounds_summary_json(output: &ScanOutput) -> Value {
       "total": output.rounds.len() + output.ignored_rounds.len(),
       "reliableRounds": output.rounds.len(),
       "ignoredRounds": output.ignored_rounds.len(),
+      "rounds": output.rounds.len() + output.ignored_rounds.len(),
       "wins": total.wins,
       "losses": total.losses,
+      "ambiguousResults": 0,
       "unknownResults": total.unknown_results,
+      "nonResultRounds": 0,
+      "notApplicableResults": 0,
+      "selfBedDestroys": output.modes.values().map(|mode| mode.self_bed_destroys).sum::<u64>(),
+      "playerBedDestroys": output.modes.values().map(|mode| mode.self_bed_destroys).sum::<u64>(),
       "knownResultRate": ratio(total.wins + total.losses, total.wins + total.losses + total.unknown_results),
       "winRate": ratio(total.wins, total.wins + total.losses),
       "gameModes": modes,
-      "resultEligibleRounds": total.wins + total.losses + total.unknown_results,
-      "notApplicableResults": 0
+      "resultEligibleRounds": total.wins + total.losses + total.unknown_results
     })
 }
 
@@ -1942,11 +2048,26 @@ fn results_json(reliable: &[Value], ignored: &[Value]) -> Value {
       "summary": {
         "wins": wins,
         "losses": losses,
+        "ambiguousResults": 0,
         "unknownResults": unknown,
+        "unknownRoundResults": unknown,
         "knownResultRate": ratio(wins + losses, wins + losses + unknown),
         "winRate": ratio(wins, wins + losses)
       },
       "signals": [],
+      "unknownHints": {
+        "total": unknown,
+        "byHint": {},
+        "byReason": {},
+        "examples": []
+      },
+      "unknownAudit": {
+        "total": unknown,
+        "byCategory": {},
+        "byNextAction": {},
+        "byPriority": {},
+        "examples": []
+      },
       "policy": {
         "known": "Rust Tauri backend matched win/loss rule events.",
         "unknown": "Rounds without win/loss evidence stay in ignored/unknown review data."
@@ -2007,9 +2128,13 @@ fn accounts_json(context: &AppContext, output: &ScanOutput) -> Value {
     json!({
       "owner": {
         "displayName": display_name,
+        "mode": get_path_string(&context.config, &["owner", "mode"]).unwrap_or("all_local_users"),
         "aliases": aliases,
         "localUserCount": local_users.len(),
         "observedEvents": output.accounts.values().map(|account| account.events).sum::<u64>(),
+        "eventStats": {
+          "events": output.accounts.values().map(|account| account.events).sum::<u64>()
+        },
         "rounds": {
           "reliable": wins + losses,
           "wins": wins,
@@ -2018,6 +2143,8 @@ fn accounts_json(context: &AppContext, output: &ScanOutput) -> Value {
         }
       },
       "localUsers": local_users,
+      "aliases": [],
+      "aliasCandidates": [],
       "playtimeByUser": playtime
     })
 }
@@ -2050,7 +2177,15 @@ fn profile_json(overview: &Value, accounts: &Value, days: &[Value], scopes: &[Va
       "generatedAt": now_iso(),
       "totals": {
         "files": overview.get("files").cloned().unwrap_or(Value::Null),
-        "playtimeSeconds": duration_value_seconds(overview, "playtime"),
+        "clientStarts": overview.get("starts").cloned().unwrap_or_else(|| json!(0)),
+        "serverConnects": overview.get("connects").cloned().unwrap_or_else(|| json!(0)),
+        "crashes": overview.get("crashes").cloned().unwrap_or_else(|| json!(0)),
+        "activitySegments": 0,
+        "knownResults": overview.get("wins").and_then(Value::as_u64).unwrap_or(0) + overview.get("losses").and_then(Value::as_u64).unwrap_or(0),
+        "ambiguousResults": 0,
+        "playerBedDestroys": overview.get("playerBedDestroys").cloned().unwrap_or_else(|| json!(0)),
+        "selfBedDestroys": overview.get("selfBedDestroys").cloned().unwrap_or_else(|| json!(0)),
+        "playtimeSeconds": overview.get("playtimeSeconds").cloned().unwrap_or_else(|| json!(0)),
         "playtime": overview.get("playtime").cloned().unwrap_or_else(|| json!("0s")),
         "reliableRounds": overview.get("reliableRounds").cloned().unwrap_or(Value::Null),
         "wins": overview.get("wins").cloned().unwrap_or(Value::Null),
@@ -2063,7 +2198,9 @@ fn profile_json(overview: &Value, accounts: &Value, days: &[Value], scopes: &[Va
       "days": {
         "active": days.iter().filter(|day| day.get("playtimeSeconds").and_then(Value::as_i64).unwrap_or(0) > 0).count(),
         "first": days.first().and_then(|day| value_at(day, "date")),
-        "last": days.last().and_then(|day| value_at(day, "date"))
+        "last": days.last().and_then(|day| value_at(day, "date")),
+        "longestMultiplayerPlaytime": null,
+        "longestSingleplayerPlaytime": null
       },
       "preferences": {
         "clientVersionByPlaytime": scopes.first().cloned().unwrap_or_else(|| json!({}))
@@ -2072,12 +2209,15 @@ fn profile_json(overview: &Value, accounts: &Value, days: &[Value], scopes: &[Va
         "win": overview.get("winStreaks").cloned().unwrap_or_else(|| json!({})),
         "playerMaxKillStreak": { "count": overview.get("playerMaxKillStreak").and_then(Value::as_u64).unwrap_or(0) }
       },
+      "extremes": {},
+      "identities": {
+        "items": [],
+        "topByPlaytime": [],
+        "topByRounds": [],
+        "topByKills": []
+      },
       "metricDefinitions": metric_definitions_json()
     })
-}
-
-fn duration_value_seconds(_value: &Value, _key: &str) -> Value {
-    Value::Null
 }
 
 fn anomalies_json(output: &ScanOutput) -> Value {
@@ -2182,13 +2322,27 @@ fn modes_index_json(output: &ScanOutput) -> Value {
 
 fn metric_definitions_json() -> Value {
     json!({
-      "rounds": { "label": "Rounds", "format": "number" },
-      "wins": { "label": "Wins", "format": "number" },
-      "losses": { "label": "Losses", "format": "number" },
-      "winRate": { "label": "Win rate", "format": "percent" },
-      "playtimeSeconds": { "label": "Playtime", "format": "duration" },
-      "kills": { "label": "Kills", "format": "number" },
-      "deaths": { "label": "Deaths", "format": "number" }
+      "rounds": { "label": "Rounds", "format": "number", "scope": "round" },
+      "wins": { "label": "Wins", "format": "number", "scope": "round" },
+      "losses": { "label": "Losses", "format": "number", "scope": "round" },
+      "resultEligible": { "label": "Result eligible", "format": "boolean", "scope": "round", "description": "False for non-win/loss activity records." },
+      "winRate": { "label": "Win rate", "format": "percent", "scope": "round" },
+      "playtimeSeconds": { "label": "Playtime", "format": "duration", "scope": "session" },
+      "kills": { "label": "Kills", "format": "number", "scope": "observed_server_chat" },
+      "deaths": { "label": "Deaths", "format": "number", "scope": "observed_server_chat" },
+      "selfKills": { "label": "Self kills", "format": "number", "scope": "player" },
+      "selfDeaths": { "label": "Self deaths", "format": "number", "scope": "player" },
+      "playerMaxKillStreak": { "label": "Player max kill streak", "format": "number", "scope": "player" },
+      "observedBroadcastMaxKillStreak": { "label": "Observed broadcast max kill streak", "format": "number", "scope": "observed_server_chat" },
+      "maxStreak": { "label": "Max streak", "format": "number", "scope": "observed_server_chat", "deprecated": true },
+      "bedDestroys": { "label": "Bed destroys", "format": "number", "scope": "observed_server_chat" },
+      "selfBedDestroys": { "label": "Self bed destroys", "format": "number", "scope": "player" },
+      "playerBedDestroys": { "label": "Player bed destroys", "format": "number", "scope": "player" },
+      "rewardEvents": { "label": "Reward events", "format": "number", "scope": "player" },
+      "goldEarned": { "label": "Gold earned", "format": "number", "scope": "player", "unit": "gold" },
+      "xpEarned": { "label": "XP earned", "format": "number", "scope": "player", "unit": "xp" },
+      "bountyClaims": { "label": "Bounty claims", "format": "number", "scope": "player" },
+      "bountyGoldEarned": { "label": "Bounty gold earned", "format": "number", "scope": "player", "unit": "gold" }
     })
 }
 
@@ -2698,6 +2852,415 @@ fn diagnostics_package_response(context: &AppContext) -> ApiResponse {
     )
 }
 
+fn share_package_response(context: &AppContext, url: &Url) -> ApiResponse {
+    let include_identity_leaderboard = match read_boolean_query(url, "identities", true) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let report = match read_json_file(&context.report_path) {
+        Ok(value) => value,
+        Err(error) if is_missing_file_error(&error) => {
+            return error_response(
+                503,
+                "report_not_ready",
+                "Derived report data is not ready. Configure roots and refresh before loading this endpoint.",
+                json!({ "path": path_string(&context.report_path) }),
+            )
+        }
+        Err(error) => {
+            return error_response(
+                503,
+                "invalid_json",
+                "Derived report data could not be parsed.",
+                json!({ "path": path_string(&context.report_path), "details": error }),
+            )
+        }
+    };
+
+    let mut package = build_share_package(&report, include_identity_leaderboard);
+    let privacy_audit = privacy_audit_for_share_package(&package);
+    if privacy_audit.get("safe").and_then(Value::as_bool) != Some(true) {
+        return error_response(
+            500,
+            "privacy_audit_failed",
+            "Privacy-safe package generation failed audit; package content was not returned.",
+            json!({ "privacyAudit": privacy_audit }),
+        );
+    }
+    if let Some(object) = package.as_object_mut() {
+        object.insert("privacyAudit".to_string(), privacy_audit);
+    }
+    json_response(200, package)
+}
+
+fn build_share_package(report: &Value, include_identity_leaderboard: bool) -> Value {
+    let modes = pick_sorted_object_values(
+        get_path_value(report, &["rounds", "summary", "gameModes"]),
+        &[
+            "id",
+            "label",
+            "rounds",
+            "durationSeconds",
+            "duration",
+            "bedDestroys",
+            "selfBedDestroys",
+            "playerBedDestroys",
+            "wins",
+            "losses",
+            "unknownResults",
+            "winRate",
+        ],
+    );
+    let activity_modes = pick_sorted_object_values(
+        get_path_value(report, &["activity", "summary", "gameModes"]),
+        &[
+            "id",
+            "label",
+            "segments",
+            "durationSeconds",
+            "duration",
+            "kills",
+            "deaths",
+            "selfKills",
+            "selfDeaths",
+            "maxStreak",
+            "observedBroadcastMaxKillStreak",
+            "playerMaxKillStreak",
+            "streakPoints",
+            "rewardEvents",
+            "goldEarned",
+            "xpEarned",
+            "bountyClaims",
+            "bountyGoldEarned",
+            "megastreaks",
+        ],
+    );
+    let identities_source = get_path_value(report, &["profile", "identities", "topByPlaytime"])
+        .or_else(|| get_path_value(report, &["profile", "identities", "items"]));
+    let identities = if include_identity_leaderboard {
+        anonymize_identity_rows(identities_source)
+    } else {
+        json!([])
+    };
+    let win_streaks = get_path_value(report, &["profile", "streaks", "win"])
+        .or_else(|| get_path_value(report, &["overview", "winStreaks"]));
+    let player_max_kill_streak = get_path_value(
+        report,
+        &["profile", "streaks", "playerMaxKillStreak"],
+    )
+    .cloned()
+    .unwrap_or_else(|| {
+        json!({
+          "count": value_i64(get_path_value(report, &["profile", "totals", "playerMaxKillStreak"])
+            .or_else(|| get_path_value(report, &["overview", "playerMaxKillStreak"])))
+        })
+    });
+
+    json!({
+      "schema": {
+        "name": "minecraft-log-observatory-share-package",
+        "version": 1
+      },
+      "generatedAt": now_iso(),
+      "reportGeneratedAt": report.get("generatedAt").cloned().unwrap_or(Value::Null),
+      "privacy": "share-safe",
+      "manifest": {
+        "kind": "share-package",
+        "privacy": "share-safe",
+        "sources": ["/api/share/package"],
+        "contains": {
+          "rawLogs": false,
+          "rawChat": false,
+          "localPaths": false,
+          "localUserNames": false
+        },
+        "contents": [
+          { "key": "player", "description": "Anonymous local-player aggregate metadata." },
+          { "key": "overview", "description": "Aggregate playtime, round, combat, result, and crash totals." },
+          { "key": "results", "description": "Aggregate result coverage and win/loss rates." },
+          { "key": "activity", "description": "Aggregate continuous-mode activity totals." },
+          { "key": "profile", "description": "Share-safe profile highlights with source/user/path fields removed." },
+          { "key": "modes", "description": "Game-mode aggregate rows." },
+          { "key": "activityModes", "description": "Continuous activity-mode aggregate rows." },
+          { "key": "identities", "description": "Optional anonymized identity leaderboard rows." }
+        ]
+      },
+      "containsRawLogs": false,
+      "containsRawChat": false,
+      "containsLocalPaths": false,
+      "containsLocalUserNames": false,
+      "anonymizedIdentities": true,
+      "player": {
+        "label": "Player",
+        "localUserCount": value_i64(get_path_value(report, &["accounts", "owner", "localUserCount"])
+          .or_else(|| get_path_value(report, &["profile", "totals", "localUserCount"]))),
+        "aliasCount": get_path_value(report, &["accounts", "aliases"])
+          .and_then(Value::as_array)
+          .map(Vec::len)
+          .unwrap_or(0)
+      },
+      "overview": pick_fields(report.get("overview").unwrap_or(&Value::Null), &[
+        "sessions", "runtimeSeconds", "runtime", "playtimeSeconds", "playtime",
+        "multiplayerSeconds", "multiplayer", "singleplayerSeconds", "singleplayer",
+        "reliableRounds", "roundDurationSeconds", "roundDuration", "kills", "deaths",
+        "bedDestroys", "selfKills", "selfDeaths", "selfBedDestroys", "playerBedDestroys",
+        "playerMaxKillStreak", "activityGoldEarned", "activityXpEarned",
+        "activityBountyClaims", "activityBountyGoldEarned", "pitGoldEarned",
+        "pitXpEarned", "pitBountyClaims", "pitBountyGoldEarned", "bestWinStreak",
+        "currentWinStreak", "wins", "losses", "unknownResults", "ambiguousResults",
+        "winRate", "knownResultRate", "crashes"
+      ]),
+      "results": pick_fields(get_path_value(report, &["results", "summary"]).unwrap_or(&Value::Null), &[
+        "rounds", "reliableRounds", "knownRoundResults", "unknownRoundResults",
+        "ambiguousRoundResults", "wins", "losses", "winRate", "knownResultRate"
+      ]),
+      "activity": pick_fields(get_path_value(report, &["activity", "summary"]).unwrap_or(&Value::Null), &[
+        "segments", "durationSeconds", "duration", "kills", "deaths", "selfKills",
+        "selfDeaths", "maxStreak", "observedBroadcastMaxKillStreak",
+        "playerMaxKillStreak", "streakPoints", "rewardEvents", "goldEarned",
+        "xpEarned", "bountyClaims", "bountyGoldEarned", "megastreaks"
+      ]),
+      "profile": {
+        "totals": pick_fields(get_path_value(report, &["profile", "totals"]).unwrap_or(&Value::Null), &[
+          "firstPlayedAt", "lastPlayedAt", "localUserCount", "clientStarts",
+          "serverConnects", "clientSessions", "playSegments", "crashes",
+          "reliableRounds", "bedDestroys", "selfBedDestroys", "playerBedDestroys",
+          "playerMaxKillStreak", "activityGoldEarned", "activityXpEarned",
+          "activityBountyClaims", "activityBountyGoldEarned", "pitGoldEarned",
+          "pitXpEarned", "pitBountyClaims", "pitBountyGoldEarned", "bestWinStreak",
+          "currentWinStreak", "knownResults", "wins", "losses", "unknownResults", "winRate"
+        ]),
+        "streaks": {
+          "win": sanitize_share_win_streaks(win_streaks),
+          "playerMaxKillStreak": player_max_kill_streak
+        },
+        "days": pick_nested_summaries(get_path_value(report, &["profile", "days"]).unwrap_or(&Value::Null), &[
+          "longestPlaytime", "longestMultiplayerPlaytime", "longestSingleplayerPlaytime",
+          "mostRounds", "latestPlayed", "longestStreak"
+        ]),
+        "preferences": {
+          "gameModeByRounds": get_path_value(report, &["profile", "preferences", "gameModeByRounds"]).cloned().unwrap_or(Value::Null),
+          "gameModeByDuration": get_path_value(report, &["profile", "preferences", "gameModeByDuration"]).cloned().unwrap_or(Value::Null),
+          "activityModeByDuration": get_path_value(report, &["profile", "preferences", "activityModeByDuration"]).cloned().unwrap_or(Value::Null)
+        },
+        "extremes": pick_nested_summaries(get_path_value(report, &["profile", "extremes"]).unwrap_or(&Value::Null), &[
+          "longestSession", "shortestSession", "longestPlaySegment",
+          "shortestPlaySegment", "longestMatch", "shortestMatch"
+        ])
+      },
+      "modes": modes,
+      "activityModes": activity_modes,
+      "identities": identities
+    })
+}
+
+fn pick_fields(source: &Value, fields: &[&str]) -> Value {
+    let mut output = Map::new();
+    for field in fields {
+        if let Some(value) = source.get(*field) {
+            output.insert((*field).to_string(), value.clone());
+        }
+    }
+    Value::Object(output)
+}
+
+fn pick_sorted_object_values(source: Option<&Value>, fields: &[&str]) -> Vec<Value> {
+    let mut rows: Vec<Value> = source
+        .and_then(Value::as_object)
+        .map(|object| {
+            object
+                .values()
+                .map(|value| pick_fields(value, fields))
+                .collect()
+        })
+        .unwrap_or_default();
+    rows.sort_by(|a, b| {
+        value_f64(b.get("durationSeconds")).total_cmp(&value_f64(a.get("durationSeconds")))
+    });
+    rows
+}
+
+fn pick_nested_summaries(source: &Value, fields: &[&str]) -> Value {
+    let mut output = Map::new();
+    for field in fields {
+        output.insert(
+            (*field).to_string(),
+            source
+                .get(*field)
+                .map(sanitize_share_nested_summary)
+                .unwrap_or(Value::Null),
+        );
+    }
+    Value::Object(output)
+}
+
+fn sanitize_share_nested_summary(value: &Value) -> Value {
+    match value {
+        Value::Array(items) => {
+            Value::Array(items.iter().map(sanitize_share_nested_summary).collect())
+        }
+        Value::Object(object) => Value::Object(
+            object
+                .iter()
+                .filter(|(key, _)| !is_blocked_share_nested_key(key))
+                .map(|(key, value)| (key.clone(), sanitize_share_nested_summary(value)))
+                .collect(),
+        ),
+        _ => value.clone(),
+    }
+}
+
+fn is_blocked_share_nested_key(key: &str) -> bool {
+    matches!(
+        key.to_ascii_lowercase().as_str(),
+        "key"
+            | "startkey"
+            | "endkey"
+            | "sourcekey"
+            | "scopekey"
+            | "source"
+            | "scope"
+            | "sources"
+            | "scopes"
+            | "filepath"
+            | "startfile"
+            | "localuser"
+            | "user"
+            | "sessionalias"
+            | "launcheruser"
+            | "launcherusers"
+            | "serverplayerid"
+            | "serverplayerids"
+            | "serverplayeridsource"
+            | "serverplayeridconfidence"
+            | "serveridentitycontext"
+            | "serverplayeridpolicy"
+            | "owneraliasesused"
+            | "propagatedserverplayerids"
+            | "identitypropagation"
+            | "uuid"
+            | "uuids"
+            | "minecraftuuid"
+            | "minecraftuuids"
+            | "playeruuid"
+            | "playeruuids"
+    )
+}
+
+fn sanitize_share_win_streaks(streaks: Option<&Value>) -> Value {
+    let Some(streaks) = streaks.filter(|value| value.is_object()) else {
+        return Value::Null;
+    };
+    json!({
+      "breakUnknown": sanitize_share_win_streak_policy(get_any_key(streaks, &["breakUnknown", "break_unknown"])),
+      "skipUnknown": sanitize_share_win_streak_policy(get_any_key(streaks, &["skipUnknown", "skip_unknown"])),
+      "break_unknown": sanitize_share_win_streak_policy(get_any_key(streaks, &["break_unknown", "breakUnknown"])),
+      "skip_unknown": sanitize_share_win_streak_policy(get_any_key(streaks, &["skip_unknown", "skipUnknown"]))
+    })
+}
+
+fn sanitize_share_win_streak_policy(policy: Option<&Value>) -> Value {
+    let Some(policy) = policy.filter(|value| value.is_object()) else {
+        return Value::Null;
+    };
+    json!({
+      "policy": policy.get("policy").cloned().unwrap_or(Value::Null),
+      "best": { "count": value_i64(policy.get("best").and_then(|best| best.get("count"))) },
+      "current": { "count": value_i64(policy.get("current").and_then(|current| current.get("count"))) }
+    })
+}
+
+fn anonymize_identity_rows(rows: Option<&Value>) -> Value {
+    let rows = rows.and_then(Value::as_array).cloned().unwrap_or_default();
+    Value::Array(
+        rows.iter()
+            .take(10)
+            .enumerate()
+            .map(|(index, row)| {
+                json!({
+                  "id": format!("identity-{}", index + 1),
+                  "label": format!("Identity {}", index + 1),
+                  "playtimeSeconds": value_i64(row.get("playtimeSeconds")),
+                  "playtime": row.get("playtime").cloned().unwrap_or_else(|| json!("0s")),
+                  "sessions": value_i64(row.get("sessions")),
+                  "playSegments": value_i64(row.get("playSegments")),
+                  "reliableRounds": value_i64(get_path_value(row, &["rounds", "reliable"])),
+                  "wins": value_i64(get_path_value(row, &["rounds", "wins"])),
+                  "losses": value_i64(get_path_value(row, &["rounds", "losses"])),
+                  "unknownResults": value_i64(get_path_value(row, &["rounds", "unknownResults"])),
+                  "kills": value_i64(get_path_value(row, &["rounds", "kills"])),
+                  "deaths": value_i64(get_path_value(row, &["rounds", "deaths"])),
+                  "bedDestroys": value_i64(get_path_value(row, &["rounds", "bedDestroys"])),
+                  "selfBedDestroys": value_i64(get_path_value(row, &["rounds", "selfBedDestroys"])),
+                  "playerBedDestroys": value_i64(get_path_value(row, &["rounds", "playerBedDestroys"])
+                    .or_else(|| get_path_value(row, &["rounds", "selfBedDestroys"]))),
+                  "winRate": value_f64(get_path_value(row, &["rounds", "winRate"]))
+                })
+            })
+            .collect(),
+    )
+}
+
+fn privacy_audit_for_share_package(package: &Value) -> Value {
+    let mut issues = Vec::new();
+    collect_privacy_key_issues(package, "$", &mut issues);
+    json!({
+      "checked": true,
+      "safe": issues.is_empty(),
+      "issueCount": issues.len(),
+      "issues": issues,
+      "checks": ["forbidden_keys"]
+    })
+}
+
+fn collect_privacy_key_issues(value: &Value, path: &str, issues: &mut Vec<Value>) {
+    match value {
+        Value::Array(items) => {
+            for (index, item) in items.iter().enumerate() {
+                collect_privacy_key_issues(item, &format!("{path}[{index}]"), issues);
+            }
+        }
+        Value::Object(object) => {
+            for (key, item) in object {
+                let child_path = format!("{path}.{key}");
+                if is_forbidden_privacy_key(key) {
+                    issues.push(json!({
+                      "code": key.to_ascii_lowercase(),
+                      "path": child_path,
+                      "message": "Privacy-safe packages cannot include this key."
+                    }));
+                }
+                collect_privacy_key_issues(item, &child_path, issues);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn is_forbidden_privacy_key(key: &str) -> bool {
+    matches!(
+        key.to_ascii_lowercase().as_str(),
+        "currentfile"
+            | "log"
+            | "logtail"
+            | "filepath"
+            | "startfile"
+            | "localuser"
+            | "user"
+            | "sessionalias"
+            | "launcheruser"
+            | "launcherusers"
+            | "serverplayerid"
+            | "serverplayerids"
+            | "uuid"
+            | "uuids"
+            | "minecraftuuid"
+            | "minecraftuuids"
+            | "playeruuid"
+            | "playeruuids"
+    )
+}
+
 fn performance_response(context: &AppContext) -> ApiResponse {
     let manifest = read_store_manifest(context).ok();
     json_response(
@@ -2936,20 +3499,144 @@ fn unknown_audit_status_response(body: &Value) -> ApiResponse {
 }
 
 fn unknown_audit_label_sets_response(context: &AppContext, body: &Value) -> ApiResponse {
-    let dir = context.root.join("labeling");
-    let _ = fs::create_dir_all(&dir);
-    let id = body
-        .get("id")
-        .and_then(Value::as_str)
-        .map(safe_id)
+    if body.is_null() || body == &json!({}) {
+        return list_unknown_audit_label_sets_response(context);
+    }
+    write_unknown_audit_label_set_response(context, body, None)
+}
+
+fn unknown_audit_label_set_save_response(
+    context: &AppContext,
+    path: &str,
+    body: &Value,
+) -> ApiResponse {
+    let id = label_set_id_from_path(path);
+    if id.is_empty() {
+        return error_response(
+            400,
+            "invalid_label_set_id",
+            "Provide one unknown-audit label set id.",
+            json!({}),
+        );
+    }
+    write_unknown_audit_label_set_response(context, body, Some(id))
+}
+
+fn unknown_audit_label_set_detail_response(context: &AppContext, path: &str) -> ApiResponse {
+    let id = label_set_id_from_path(path);
+    let file = unknown_audit_label_set_path(context, &id);
+    match read_json_file(&file) {
+        Ok(value) => {
+            let rows = value.get("rows").cloned().unwrap_or_else(|| json!([]));
+            let summary = unknown_audit_labels_response(&json!({ "rows": rows })).body;
+            json_response(200, label_set_response_body(&value, &file, summary, None))
+        }
+        Err(_) => error_response(
+            404,
+            "label_set_not_found",
+            "Unknown-audit label set was not found.",
+            json!({ "id": id }),
+        ),
+    }
+}
+
+fn unknown_audit_label_set_delete_response(context: &AppContext, path: &str) -> ApiResponse {
+    let id = label_set_id_from_path(path);
+    let file = unknown_audit_label_set_path(context, &id);
+    let _ = fs::remove_file(&file);
+    json_response(200, json!({ "ok": true, "id": id, "deleted": true }))
+}
+
+fn list_unknown_audit_label_sets_response(context: &AppContext) -> ApiResponse {
+    let dir = unknown_audit_label_sets_dir(context);
+    let mut items = Vec::new();
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                continue;
+            }
+            if let Ok(value) = read_json_file(&path) {
+                items.push(json!({
+                  "id": value.get("id").cloned().unwrap_or_else(|| json!(path.file_stem().and_then(|name| name.to_str()).unwrap_or(""))),
+                  "title": value.get("title").cloned().unwrap_or(Value::Null),
+                  "updatedAt": value.get("updatedAt").cloned().unwrap_or(Value::Null),
+                  "rows": value.get("rows").and_then(Value::as_array).map(Vec::len).unwrap_or(0),
+                  "filePath": path_string(&path)
+                }));
+            }
+        }
+    }
+    json_response(
+        200,
+        json!({
+          "ok": true,
+          "total": items.len(),
+          "policy": "Local label sets are derived review drafts. They do not change report/store/config/rules and can be regenerated or deleted.",
+          "items": items
+        }),
+    )
+}
+
+fn write_unknown_audit_label_set_response(
+    context: &AppContext,
+    body: &Value,
+    forced_id: Option<String>,
+) -> ApiResponse {
+    let id = forced_id
+        .or_else(|| body.get("id").and_then(Value::as_str).map(safe_id))
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| format!("labels-{}", now_millis()));
-    let path = dir.join(format!("{id}.json"));
-    let value = json!({ "id": id, "savedAt": now_iso(), "body": body });
-    match write_json_file(&path, &value) {
+    let rows = body
+        .get("rows")
+        .or_else(|| body.get("labels"))
+        .and_then(Value::as_array)
+        .cloned();
+    let Some(rows) = rows else {
+        return error_response(
+            400,
+            "invalid_label_rows",
+            "rows or labels must be an array.",
+            json!({}),
+        );
+    };
+    let dir = unknown_audit_label_sets_dir(context);
+    let _ = fs::create_dir_all(&dir);
+    let file = unknown_audit_label_set_path(context, &id);
+    let now = now_iso();
+    let existing = read_json_file(&file).ok();
+    let created_at = existing
+        .as_ref()
+        .and_then(|value| get_path_string(value, &["createdAt"]))
+        .map(str::to_string)
+        .unwrap_or_else(|| now.clone());
+    let summary = unknown_audit_labels_response(&json!({ "rows": rows.clone() })).body;
+    let value = json!({
+      "schema": { "name": "minecraft-log-observatory-unknown-audit-label-set", "version": 1 },
+      "id": id,
+      "title": body.get("title").and_then(Value::as_str).unwrap_or(&id),
+      "description": body.get("description").and_then(Value::as_str).unwrap_or(""),
+      "source": body.get("source").cloned().unwrap_or_else(|| json!({})),
+      "createdAt": created_at,
+      "updatedAt": now,
+      "validateRoundRefs": body.get("validateRoundRefs").and_then(Value::as_bool).unwrap_or(true),
+      "rows": rows,
+      "review": {
+        "allowedReviewLabels": ["win", "loss", "ambiguous", "ignore", "needs_rule", "unknown"],
+        "readiness": "ready_for_workflow",
+        "nextStep": "run_dry_run"
+      },
+      "writes": unknown_audit_label_set_writes()
+    });
+    match write_json_file(&file, &value) {
         Ok(()) => json_response(
             200,
-            json!({ "ok": true, "item": value, "path": path_string(&path) }),
+            label_set_response_body(
+                &value,
+                &file,
+                summary,
+                Some("Saved label sets are local derived review drafts only. Run /api/unknown-audit/status or /api/rules/audit-workflow before changing rules."),
+            ),
         ),
         Err(error) => error_response(
             500,
@@ -2958,6 +3645,46 @@ fn unknown_audit_label_sets_response(context: &AppContext, body: &Value) -> ApiR
             json!({ "details": error }),
         ),
     }
+}
+
+fn label_set_response_body(
+    value: &Value,
+    file: &Path,
+    summary: Value,
+    note: Option<&str>,
+) -> Value {
+    let mut body = value.as_object().cloned().unwrap_or_default();
+    let rows = body.get("rows").cloned().unwrap_or_else(|| json!([]));
+    body.insert("ok".to_string(), json!(true));
+    body.insert("filePath".to_string(), json!(path_string(file)));
+    body.insert("rows".to_string(), rows.clone());
+    body.insert("labels".to_string(), rows);
+    body.insert("summary".to_string(), summary);
+    body.insert(
+        "readiness".to_string(),
+        json!({ "status": "ready_for_workflow", "nextStep": "run_dry_run" }),
+    );
+    body.insert("writes".to_string(), unknown_audit_label_set_writes());
+    if let Some(note) = note {
+        body.insert("note".to_string(), json!(note));
+    }
+    Value::Object(body)
+}
+
+fn unknown_audit_label_sets_dir(context: &AppContext) -> PathBuf {
+    context.data_dir.join("unknown-audit-label-sets")
+}
+
+fn unknown_audit_label_set_path(context: &AppContext, id: &str) -> PathBuf {
+    unknown_audit_label_sets_dir(context).join(format!("{}.json", safe_id(id)))
+}
+
+fn label_set_id_from_path(path: &str) -> String {
+    safe_id(percent_decode(path.trim_start_matches("/api/unknown-audit/label-sets/")).as_str())
+}
+
+fn unknown_audit_label_set_writes() -> Value {
+    json!({ "report": false, "store": false, "config": false, "rules": false })
 }
 
 fn rules_doctor_response(context: &AppContext) -> ApiResponse {
@@ -3530,20 +4257,26 @@ fn store_json_response(context: &AppContext, key: &str) -> ApiResponse {
 
 fn read_json_response(path: &Path, missing_code: &str) -> ApiResponse {
     match read_json_file(path) {
-    Ok(value) => json_response(200, value),
-    Err(error) if error.contains("No such file") || error.contains("cannot find the file") || error.contains("os error 2") => error_response(
-      503,
-      missing_code,
-      "Derived report data is not ready. Configure roots and refresh before loading this endpoint.",
-      json!({ "path": path_string(path) }),
-    ),
-    Err(error) => error_response(
-      503,
-      "invalid_json",
-      "Derived report data could not be parsed.",
-      json!({ "path": path_string(path), "details": error }),
-    ),
-  }
+        Ok(value) => json_response(200, value),
+        Err(error) if is_missing_file_error(&error) => error_response(
+            503,
+            missing_code,
+            "Derived report data is not ready. Configure roots and refresh before loading this endpoint.",
+            json!({ "path": path_string(path) }),
+        ),
+        Err(error) => error_response(
+            503,
+            "invalid_json",
+            "Derived report data could not be parsed.",
+            json!({ "path": path_string(path), "details": error }),
+        ),
+    }
+}
+
+fn is_missing_file_error(error: &str) -> bool {
+    error.contains("No such file")
+        || error.contains("cannot find the file")
+        || error.contains("os error 2")
 }
 
 fn jsonl_table_response(
@@ -4013,12 +4746,56 @@ fn query_bool(url: &Url, key: &str) -> Option<bool> {
     })
 }
 
+fn read_boolean_query(url: &Url, key: &str, default_value: bool) -> Result<bool, ApiResponse> {
+    let Some(raw) = url.query_pairs().find_map(|(name, value)| {
+        if name == key {
+            Some(value.into_owned())
+        } else {
+            None
+        }
+    }) else {
+        return Ok(default_value);
+    };
+    if raw.is_empty() {
+        return Ok(default_value);
+    }
+    match raw.to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" => Ok(true),
+        "false" | "0" | "no" => Ok(false),
+        _ => Err(error_response(
+            400,
+            "invalid_boolean_query",
+            &format!("{key} must be true or false when provided."),
+            json!({ "field": key, "allowed": ["true", "false", "1", "0", "yes", "no"] }),
+        )),
+    }
+}
+
 fn value_at<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
     value.get(key).and_then(Value::as_str)
 }
 
 fn number_at(value: &Value, key: &str) -> Option<f64> {
     value.get(key).and_then(Value::as_f64)
+}
+
+fn value_i64(value: Option<&Value>) -> i64 {
+    value
+        .and_then(|value| {
+            value
+                .as_i64()
+                .or_else(|| value.as_u64().and_then(|number| i64::try_from(number).ok()))
+                .or_else(|| value.as_f64().map(|number| number as i64))
+        })
+        .unwrap_or(0)
+}
+
+fn value_f64(value: Option<&Value>) -> f64 {
+    value.and_then(Value::as_f64).unwrap_or(0.0)
+}
+
+fn get_any_key<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a Value> {
+    keys.iter().find_map(|key| value.get(*key))
 }
 
 fn dotted_value_at<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
@@ -4466,6 +5243,80 @@ mod tests {
         assert!(context.store_dir.join("manifest.json").is_file());
         let summary = read_json_file(&context.summary_path).expect("summary");
         assert_eq!(summary["overview"]["files"], json!(1));
+        assert_eq!(
+            summary["metricDefinitions"]["playerMaxKillStreak"]["scope"],
+            json!("player")
+        );
+        let report = read_json_file(&context.report_path).expect("report");
+        assert!(report["rounds"]["all"].as_array().is_some());
+        assert_eq!(report["rounds"]["allRef"], json!("rounds.all"));
+        assert_eq!(
+            report["accounts"]["owner"]["mode"],
+            json!("all_local_users")
+        );
+        assert!(context.store_dir.join("metric-definitions.json").is_file());
+
+        let metrics = route_api(
+            &context,
+            ApiRequest {
+                method: "GET".to_string(),
+                url: "/api/metrics/definitions".to_string(),
+                body: Value::Null,
+            },
+        );
+        assert_eq!(metrics.status, 200);
+        assert_eq!(metrics.body["source"], json!("static_backend_contract"));
+
+        let label_set = route_api(
+            &context,
+            ApiRequest {
+                method: "PUT".to_string(),
+                url: "/api/unknown-audit/label-sets/sample".to_string(),
+                body: json!({ "rows": [{ "reviewLabel": "loss", "message": "sample" }] }),
+            },
+        );
+        assert_eq!(label_set.status, 200);
+        assert_eq!(label_set.body["id"], json!("sample"));
+        assert!(context
+            .data_dir
+            .join("unknown-audit-label-sets")
+            .join("sample.json")
+            .is_file());
+
+        let share_package = route_api(
+            &context,
+            ApiRequest {
+                method: "GET".to_string(),
+                url: "/api/share/package?identities=false".to_string(),
+                body: Value::Null,
+            },
+        );
+        assert_eq!(share_package.status, 200);
+        assert_eq!(
+            share_package.body["schema"]["name"],
+            json!("minecraft-log-observatory-share-package")
+        );
+        assert_eq!(share_package.body["privacy"], json!("share-safe"));
+        assert_eq!(
+            share_package.body["manifest"]["contains"]["rawLogs"],
+            json!(false)
+        );
+        assert_eq!(share_package.body["privacyAudit"]["safe"], json!(true));
+        assert_eq!(share_package.body["identities"], json!([]));
+
+        let invalid_share_package = route_api(
+            &context,
+            ApiRequest {
+                method: "GET".to_string(),
+                url: "/api/share/package?identities=maybe".to_string(),
+                body: Value::Null,
+            },
+        );
+        assert_eq!(invalid_share_package.status, 400);
+        assert_eq!(
+            invalid_share_package.body["error"],
+            json!("invalid_boolean_query")
+        );
 
         let _ = fs::remove_dir_all(root);
     }
