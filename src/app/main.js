@@ -512,17 +512,20 @@ const I18N = {
       choose: "选择目录",
       validate: "验证目录",
       save: "保存并扫描",
+      saveOnly: "保存目录",
       refresh: "扫描日志",
       choosing: "正在打开",
       validating: "正在验证",
       saving: "正在保存",
       refreshing: "正在扫描日志",
       readyToRefresh: "目录已保存，需要扫描日志。",
+      needsExternalRefresh: "目录已保存，等待扫描支持。",
       firstRunHint: "路径只保存在本机配置里，不会写入分享卡或诊断包。",
       manualHint: "如果系统选择器不可用，可以直接粘贴绝对路径。",
       validationPassed: "目录可用：{files} 个日志文件，{scopes} 个范围。",
       validationFailed: "没有找到可用日志。请选择实际 .minecraft 目录或包含 logs 的实例目录。",
       saved: "日志目录已保存，开始扫描。",
+      savedOnly: "日志目录已保存。单文件版暂时不能扫描。",
       pickerCancelled: "已取消目录选择。",
       pickerUnavailable: "系统目录选择器不可用，请手动粘贴路径。",
       pickerOpened: "正在打开系统目录选择器。",
@@ -864,17 +867,20 @@ const I18N = {
       choose: "Choose folder",
       validate: "Validate folder",
       save: "Save and scan",
+      saveOnly: "Save folder",
       refresh: "Scan logs",
       choosing: "Opening",
       validating: "Validating",
       saving: "Saving",
       refreshing: "Scanning logs",
       readyToRefresh: "Folder saved. A log scan is required.",
+      needsExternalRefresh: "Folder saved. Scan support is pending.",
       firstRunHint: "Paths stay in your local config and are not included in share cards or safe diagnostics.",
       manualHint: "If the system picker is unavailable, paste an absolute path.",
       validationPassed: "Folder is usable: {files} log files, {scopes} scopes.",
       validationFailed: "No usable logs were found. Choose the actual .minecraft folder or an instance folder with logs.",
       saved: "Log folder saved. Scan started.",
+      savedOnly: "Log folder saved. The single-file build cannot scan yet.",
       pickerCancelled: "Folder selection cancelled.",
       pickerUnavailable: "System folder picker is unavailable. Paste a path manually.",
       pickerOpened: "Opening the system folder picker.",
@@ -1755,6 +1761,7 @@ function renderSetup() {
 function oobeRootForm() {
   const busy = state.oobe.picking || state.oobe.validating || state.oobe.saving || state.refresh?.running;
   const configuredRoots = state.appStatus?.project?.roots ?? [];
+  const canRefresh = canRunOobeRefresh();
   return `
     <label class="oobe-root-field">
       <span>${escapeHtml(t("oobe.rootLabel"))}</span>
@@ -1780,10 +1787,14 @@ function oobeRootForm() {
       </button>
       <button type="button" class="primary-action" data-action="save-log-roots" ${busy ? "disabled" : ""}>
         ${state.oobe.saving ? '<span class="spinner-icon" aria-hidden="true"></span>' : iconSpan("download")}
-        <span>${escapeHtml(state.oobe.saving ? t("oobe.saving") : t("oobe.save"))}</span>
+        <span>${escapeHtml(state.oobe.saving ? t("oobe.saving") : t(canRefresh ? "oobe.save" : "oobe.saveOnly"))}</span>
       </button>
     </div>
   `;
+}
+
+function canRunOobeRefresh() {
+  return state.appStatus?.app?.runtime !== "tauri-rust";
 }
 
 function oobeValidationPanel() {
@@ -1805,6 +1816,7 @@ function oobeValidationPanel() {
 }
 
 function oobeRefreshPanel() {
+  if (!canRunOobeRefresh()) return "";
   const setup = state.appStatus?.setup;
   const reasons = setup?.reasons ?? [];
   const needsRefresh = setup?.state === "needs_refresh";
@@ -1872,7 +1884,7 @@ function refreshPhaseLabel(phase) {
 function setupStatusLabel(appStatus) {
   const setupState = appStatus?.setup?.state;
   if (setupState === "first_run") return t("oobe.title");
-  if (setupState === "needs_refresh") return t("oobe.readyToRefresh");
+  if (setupState === "needs_refresh") return t(canRunOobeRefresh() ? "oobe.readyToRefresh" : "oobe.needsExternalRefresh");
   if (setupState === "refreshing") return t("oobe.refreshing");
   return t("refresh.done");
 }
@@ -7818,9 +7830,9 @@ async function saveOobeRoots() {
       return;
     }
     await putJson("/api/config", { roots });
-    state.oobe.message = t("oobe.saved");
+    state.oobe.message = t(canRunOobeRefresh() ? "oobe.saved" : "oobe.savedOnly");
     state.appStatus = await getJson("/api/app/status");
-    await startOobeRefresh();
+    if (canRunOobeRefresh()) await startOobeRefresh();
   } catch (error) {
     const validation = error.detail;
     if (validation?.roots) state.oobe.validation = validation;

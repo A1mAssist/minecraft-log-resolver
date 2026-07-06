@@ -44,7 +44,6 @@ struct AppContext {
 
 #[tauri::command]
 fn api_request(request: ApiRequest) -> Result<ApiResponse, String> {
-    let _ = &request.body;
     let context = AppContext::discover();
     Ok(route_api(&context, request))
 }
@@ -116,6 +115,13 @@ fn route_api(context: &AppContext, request: ApiRequest) -> ApiResponse {
             "Only /api/* routes are available in the Tauri runtime.",
             json!({}),
         );
+    }
+
+    if method == "POST" && path == "/api/config/validate-roots" {
+        return validate_roots_response(context, &request.body);
+    }
+    if method == "PUT" && path == "/api/config" {
+        return save_config_response(context, &request.body);
     }
 
     if method != "GET" {
@@ -307,6 +313,75 @@ fn config_response(context: &AppContext) -> ApiResponse {
             "implemented": false,
             "message": "Writing config is not implemented in the pure Rust Tauri backend yet."
           }
+        }),
+    )
+}
+
+fn validate_roots_response(context: &AppContext, body: &Value) -> ApiResponse {
+    let roots = match roots_from_body(body) {
+        Ok(roots) => roots,
+        Err(response) => return response,
+    };
+    let result = validate_log_roots(context, &roots);
+    json_response(
+        if result["ok"].as_bool() == Some(true) {
+            200
+        } else {
+            400
+        },
+        result,
+    )
+}
+
+fn save_config_response(context: &AppContext, body: &Value) -> ApiResponse {
+    let roots = match roots_from_body(body) {
+        Ok(roots) => roots,
+        Err(response) => return response,
+    };
+    let validation = validate_log_roots(context, &roots);
+    if validation["ok"].as_bool() != Some(true) {
+        return json_response(400, validation);
+    }
+
+    let mut local_config = read_json_file(&context.local_config_path).unwrap_or_else(|_| json!({}));
+    local_config["roots"] = json!(roots);
+    if let Some(parent) = context.local_config_path.parent() {
+        if let Err(error) = fs::create_dir_all(parent) {
+            return error_response(
+                500,
+                "config_write_failed",
+                "Local config directory could not be created.",
+                json!({ "path": path_string(&context.local_config_path), "details": error.to_string() }),
+            );
+        }
+    }
+    let text = match serde_json::to_string_pretty(&local_config) {
+        Ok(text) => format!("{text}\n"),
+        Err(error) => {
+            return error_response(
+                500,
+                "config_write_failed",
+                "Local config could not be serialized.",
+                json!({ "details": error.to_string() }),
+            );
+        }
+    };
+    if let Err(error) = fs::write(&context.local_config_path, text) {
+        return error_response(
+            500,
+            "config_write_failed",
+            "Local config could not be written.",
+            json!({ "path": path_string(&context.local_config_path), "details": error.to_string() }),
+        );
+    }
+
+    let updated = AppContext::discover();
+    json_response(
+        200,
+        json!({
+          "ok": true,
+          "localConfigPath": path_string(&updated.local_config_path),
+          "effective": updated.config,
         }),
     )
 }
@@ -1214,6 +1289,168 @@ fn get_path_string<'a>(value: &'a Value, path: &[&str]) -> Option<&'a str> {
     get_path_value(value, path).and_then(Value::as_str)
 }
 
+fn roots_from_body(body: &Value) -> Result<Vec<String>, ApiResponse> {
+    let Some(roots_value) = body.get("roots") else {
+        return Err(error_response(
+            400,
+            "invalid_validate_roots_request",
+            "Root validation request is invalid.",
+            json!({ "errors": [{ "field": "roots", "error": "required" }] }),
+        ));
+    };
+    let Some(items) = roots_value.as_array() else {
+        return Err(error_response(
+            400,
+            "invalid_validate_roots_request",
+            "Root validation request is invalid.",
+            json!({ "errors": [{ "field": "roots", "error": "expected_string_array" }] }),
+        ));
+    };
+    let mut roots = Vec::new();
+    for item in items {
+        let Some(root) = item.as_str() else {
+            return Err(error_response(
+                400,
+                "invalid_validate_roots_request",
+                "Root validation request is invalid.",
+                json!({ "errors": [{ "field": "roots", "error": "expected_string_array" }] }),
+            ));
+        };
+        roots.push(root.trim().to_string());
+    }
+    Ok(roots)
+}
+
+fn validate_log_roots(context: &AppContext, roots: &[String]) -> Value {
+    let mut seen = Vec::<String>::new();
+    let mut items = Vec::new();
+    for root in roots {
+        let raw_path = root.trim();
+        let resolved = resolve_app_path(&context.root, raw_path);
+        let key = path_string(&resolved).to_ascii_lowercase();
+        let duplicate = seen.iter().any(|item| item == &key);
+        seen.push(key);
+
+        let mut issues = Vec::new();
+        if raw_path.is_empty() {
+            issues.push(json!({ "code": "empty_root", "message": "Root path is empty." }));
+        }
+        if duplicate {
+            issues.push(json!({ "code": "duplicate_root", "message": "Root path is duplicated." }));
+        }
+
+        let mut exists = false;
+        let mut readable = false;
+        let mut kind = Value::Null;
+        let mut scopes = Vec::new();
+        let mut log_files = 0usize;
+        if !raw_path.is_empty() {
+            match fs::metadata(&resolved) {
+                Ok(metadata) => {
+                    exists = true;
+                    if metadata.is_dir() {
+                        readable = true;
+                        kind = json!("directory");
+                        scopes = discover_log_scopes(&resolved);
+                        if scopes.is_empty() {
+                            issues.push(json!({ "code": "no_log_scopes", "message": "No logs directory found at root/logs or root/versions/*/logs." }));
+                        }
+                        log_files = scopes.iter().map(|scope| count_log_files(scope)).sum();
+                        if log_files == 0 {
+                            issues.push(json!({ "code": "no_logs_found", "message": "No .log, .log.gz, or !CHAT log files were found." }));
+                        }
+                    } else {
+                        kind = json!("file");
+                        issues.push(json!({ "code": "not_directory", "message": "Root path must be a directory." }));
+                    }
+                }
+                Err(error) => {
+                    if error.kind() == std::io::ErrorKind::NotFound {
+                        issues.push(
+                            json!({ "code": "not_found", "message": "Root path does not exist." }),
+                        );
+                    } else if matches!(error.kind(), std::io::ErrorKind::PermissionDenied) {
+                        exists = true;
+                        issues.push(json!({ "code": "permission_denied", "message": "Root path is not readable." }));
+                    } else {
+                        issues.push(json!({ "code": "read_error", "message": error.to_string() }));
+                    }
+                }
+            }
+        }
+
+        let valid = exists
+            && readable
+            && kind.as_str() == Some("directory")
+            && log_files > 0
+            && !issues.iter().any(|issue| {
+                matches!(
+                    issue.get("code").and_then(Value::as_str),
+                    Some("duplicate_root" | "sample_unreadable")
+                )
+            });
+        items.push(json!({
+          "root": path_string(&resolved),
+          "input": raw_path,
+          "exists": exists,
+          "readable": readable,
+          "type": kind,
+          "scopes": scopes.len(),
+          "logFiles": log_files,
+          "sampleReadable": log_files > 0,
+          "issues": issues,
+          "recommendations": [],
+          "valid": valid,
+        }));
+    }
+    let ok = !items.is_empty()
+        && items
+            .iter()
+            .all(|item| item.get("valid").and_then(Value::as_bool) == Some(true));
+    json!({
+      "ok": ok,
+      "encoding": get_path_string(&context.config, &["encoding"]).unwrap_or("gb18030"),
+      "total": items.len(),
+      "logFiles": items.iter().map(|item| item.get("logFiles").and_then(Value::as_u64).unwrap_or(0)).sum::<u64>(),
+      "roots": items,
+    })
+}
+
+fn discover_log_scopes(root: &Path) -> Vec<PathBuf> {
+    let mut scopes = Vec::new();
+    let root_logs = root.join("logs");
+    if root_logs.is_dir() {
+        scopes.push(root_logs);
+    }
+    let versions_dir = root.join("versions");
+    if let Ok(entries) = fs::read_dir(versions_dir) {
+        for entry in entries.flatten() {
+            let logs = entry.path().join("logs");
+            if logs.is_dir() {
+                scopes.push(logs);
+            }
+        }
+    }
+    scopes
+}
+
+fn count_log_files(dir: &Path) -> usize {
+    fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| entry.path().is_file())
+                .filter(|entry| is_log_file_name(&entry.file_name().to_string_lossy()))
+                .count()
+        })
+        .unwrap_or(0)
+}
+
+fn is_log_file_name(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    name.ends_with(".log") || name.ends_with(".log.gz") || name.contains("!chat")
+}
+
 fn config_roots(config: &Value) -> Vec<String> {
     config
         .get("roots")
@@ -1387,4 +1624,45 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![api_request])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn detects_minecraft_log_files() {
+        assert!(is_log_file_name("latest.log"));
+        assert!(is_log_file_name("2024-01-01-1.log.gz"));
+        assert!(is_log_file_name("!CHAT-2024-01-01.txt"));
+        assert!(!is_log_file_name("options.txt"));
+    }
+
+    #[test]
+    fn discovers_root_and_version_logs() {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        let root = env::temp_dir().join(format!("mlr-log-root-test-{stamp}"));
+        let root_logs = root.join("logs");
+        let version_logs = root.join("versions").join("1.20.1").join("logs");
+        fs::create_dir_all(&root_logs).expect("root logs dir");
+        fs::create_dir_all(&version_logs).expect("version logs dir");
+        fs::write(root_logs.join("latest.log"), "").expect("root log");
+        fs::write(version_logs.join("old.log.gz"), "").expect("version log");
+
+        let scopes = discover_log_scopes(&root);
+        assert_eq!(scopes.len(), 2);
+        assert_eq!(
+            scopes
+                .iter()
+                .map(|scope| count_log_files(scope))
+                .sum::<usize>(),
+            2
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
 }

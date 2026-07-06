@@ -141,6 +141,8 @@ assert.match(js, /chooseLogRoot/);
 assert.match(js, /validateOobeRoots/);
 assert.match(js, /saveOobeRoots/);
 assert.match(js, /startOobeRefresh/);
+assert.match(js, /function canRunOobeRefresh/);
+assert.match(js, /if \(canRunOobeRefresh\(\)\) await startOobeRefresh\(\)/);
 assert.match(js, /t\("oobe\.choosing"\)/);
 assert.match(js, /t\("oobe\.pickerOpened"\)/);
 assert.match(js, /t\("oobe\.pickerSelected"\)/);
