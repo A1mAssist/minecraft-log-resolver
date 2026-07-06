@@ -37,9 +37,7 @@ The Tauri desktop build uses the WebView already available on Windows and talks 
 
 ## Current Desktop Status
 
-The Windows desktop build is a no-port Tauri app. The dashboard can load existing derived reports and stores through the Rust backend.
-
-Some editing and refresh workflows are still being ported from the legacy Node backend. In the pure Rust desktop runtime, refresh, parser execution, config writes, and rule editing currently return `not_implemented_in_rust_backend` until those paths are migrated.
+The Windows desktop build is a no-port Tauri app. It validates log roots, saves local config, scans Minecraft logs, writes report/store data, and serves the dashboard through the Rust backend.
 
 For full backend development workflows, use the Node commands in this repository.
 

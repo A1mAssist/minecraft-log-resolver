@@ -57,7 +57,7 @@ const manifest = {
   excluded: [...excludedDirs].sort(),
   notes: [
     "This Tauri bundle uses IPC instead of localhost HTTP ports.",
-    "The desktop runtime handles read-only dashboard API requests in Rust and does not start node.exe.",
+    "The desktop runtime handles scanning and dashboard API requests in Rust and does not start node.exe.",
     "It intentionally excludes raw Minecraft logs and derived local data such as reports, cache, store, exports, and labeling work queues.",
   ],
 };

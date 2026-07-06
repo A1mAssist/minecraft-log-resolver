@@ -525,7 +525,7 @@ const I18N = {
       validationPassed: "目录可用：{files} 个日志文件，{scopes} 个范围。",
       validationFailed: "没有找到可用日志。请选择实际 .minecraft 目录或包含 logs 的实例目录。",
       saved: "日志目录已保存，开始扫描。",
-      savedOnly: "日志目录已保存。单文件版暂时不能扫描。",
+      savedOnly: "日志目录已保存。",
       pickerCancelled: "已取消目录选择。",
       pickerUnavailable: "系统目录选择器不可用，请手动粘贴路径。",
       pickerOpened: "正在打开系统目录选择器。",
@@ -880,7 +880,7 @@ const I18N = {
       validationPassed: "Folder is usable: {files} log files, {scopes} scopes.",
       validationFailed: "No usable logs were found. Choose the actual .minecraft folder or an instance folder with logs.",
       saved: "Log folder saved. Scan started.",
-      savedOnly: "Log folder saved. The single-file build cannot scan yet.",
+      savedOnly: "Log folder saved.",
       pickerCancelled: "Folder selection cancelled.",
       pickerUnavailable: "System folder picker is unavailable. Paste a path manually.",
       pickerOpened: "Opening the system folder picker.",
@@ -1794,7 +1794,7 @@ function oobeRootForm() {
 }
 
 function canRunOobeRefresh() {
-  return state.appStatus?.app?.runtime !== "tauri-rust";
+  return true;
 }
 
 function oobeValidationPanel() {
