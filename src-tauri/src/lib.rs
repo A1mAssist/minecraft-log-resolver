@@ -1,5 +1,6 @@
 #![recursion_limit = "512"]
 
+use base64::Engine as _;
 use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, TimeZone, Utc};
 use encoding_rs::{Encoding, UTF_8};
 use flate2::read::GzDecoder;
@@ -204,8 +205,8 @@ fn route_api(context: &AppContext, request: ApiRequest) -> ApiResponse {
         "/api/diagnostics/package" => diagnostics_package_response(context),
         "/api/share/package" => share_package_response(context, &url),
         "/api/performance" => performance_response(context),
-        "/api/skin" => skin_response(),
-        "/api/minecraft-profile" => minecraft_profile_response(&url),
+        "/api/skin" => skin_response(context, &url),
+        "/api/minecraft-profile" => minecraft_profile_response(context, &url),
         "/api/metrics/definitions" => metric_definitions_response(context),
         "/api/report" => read_json_response(&context.report_path, "report_not_ready"),
         "/api/summary" => read_json_response(&context.summary_path, "summary_not_ready"),
@@ -3774,37 +3775,227 @@ fn performance_response(context: &AppContext) -> ApiResponse {
     )
 }
 
-fn skin_response() -> ApiResponse {
-    error_response(
-        404,
-        "skin_unavailable",
-        "Skin proxy is disabled in the pure Rust no-port runtime.",
-        json!({ "skinProxyEnabled": false }),
+fn skin_response(context: &AppContext, url: &Url) -> ApiResponse {
+    if get_path_value(&context.config, &["app", "skinProxyEnabled"]).and_then(Value::as_bool)
+        == Some(false)
+    {
+        return error_response(
+            403,
+            "skin_proxy_disabled",
+            "Remote skin proxy is disabled in local config.",
+            json!({}),
+        );
+    }
+    let kind = query_string(url, "kind").unwrap_or_else(|| "auto".to_string());
+    let Some(source) = query_string(url, "source") else {
+        return error_response(
+            400,
+            "missing_skin_source",
+            "Provide source as a Minecraft name, UUID, or HTTPS skin PNG URL.",
+            json!({}),
+        );
+    };
+    match resolve_skin_texture_source(&source, &kind) {
+        Ok(value) => json_response(200, value),
+        Err(response) => response,
+    }
+}
+
+fn minecraft_profile_response(context: &AppContext, url: &Url) -> ApiResponse {
+    if get_path_value(&context.config, &["app", "skinProxyEnabled"]).and_then(Value::as_bool)
+        == Some(false)
+    {
+        return error_response(
+            403,
+            "minecraft_profile_disabled",
+            "Remote Minecraft profile lookup is disabled in local config.",
+            json!({}),
+        );
+    }
+    let username = query_string(url, "username").or_else(|| query_string(url, "name"));
+    let Some(name) = username else {
+        return error_response(
+            400,
+            "missing_minecraft_username",
+            "Provide username as a Minecraft player name.",
+            json!({}),
+        );
+    };
+    if !is_valid_minecraft_name(&name) {
+        return error_response(
+            400,
+            "invalid_minecraft_username",
+            "Minecraft player names must be 1-16 letters, numbers, or underscores.",
+            json!({}),
+        );
+    }
+    match lookup_minecraft_profile_by_name(&name) {
+        Ok(profile) => json_response(200, profile),
+        Err(response) => response,
+    }
+}
+
+fn resolve_skin_texture_source(source: &str, kind: &str) -> Result<Value, ApiResponse> {
+    let normalized_kind = kind.to_ascii_lowercase();
+    if !matches!(normalized_kind.as_str(), "auto" | "player" | "uuid" | "url") {
+        return Err(error_response(
+            400,
+            "invalid_skin_kind",
+            "Skin source kind must be auto, player, uuid, or url.",
+            json!({}),
+        ));
+    }
+    if normalized_kind == "url" || (normalized_kind == "auto" && source.starts_with("https://")) {
+        if !source.starts_with("https://textures.minecraft.net/") {
+            return Err(error_response(
+                400,
+                "invalid_skin_url",
+                "Skin URL must use https://textures.minecraft.net/.",
+                json!({}),
+            ));
+        }
+        return Ok(json!({ "ok": true, "kind": "url", "url": source }));
+    }
+    if normalized_kind == "uuid" || source.len() == 32 || source.len() == 36 {
+        let texture = resolve_mojang_skin_texture(source)?;
+        return Ok(
+            json!({ "ok": true, "kind": "uuid", "url": texture.get("skinUrl").cloned().unwrap_or(Value::Null), "texture": texture }),
+        );
+    }
+    if !is_valid_minecraft_name(source) {
+        return Err(error_response(
+            400,
+            "invalid_minecraft_username",
+            "Minecraft player names must be 1-16 letters, numbers, or underscores.",
+            json!({}),
+        ));
+    }
+    let profile = lookup_minecraft_profile_by_name(source)?;
+    Ok(
+        json!({ "ok": true, "kind": "player", "url": profile.get("skinUrl").cloned().unwrap_or(Value::Null), "profile": profile }),
     )
 }
 
-fn minecraft_profile_response(url: &Url) -> ApiResponse {
-    let username = query_string(url, "username").or_else(|| query_string(url, "name"));
-    match username {
-        Some(name) if is_valid_minecraft_name(&name) => json_response(
-            200,
-            json!({
-              "ok": true,
-              "name": name,
-              "id": null,
-              "uuid": null,
-              "skinUrl": null,
-              "model": "classic",
-              "source": "offline"
-            }),
-        ),
-        _ => error_response(
-            400,
-            "invalid_minecraft_username",
-            "Enter a 1-16 character Minecraft ID using letters, numbers, or underscores.",
-            json!({}),
-        ),
+fn lookup_minecraft_profile_by_name(username: &str) -> Result<Value, ApiResponse> {
+    let profile_url =
+        format!("https://api.minecraftservices.com/minecraft/profile/lookup/name/{username}");
+    let profile: Value = http_get_json(&profile_url).map_err(|error| {
+        error_response(
+            502,
+            "minecraft_profile_unavailable",
+            "Minecraft profile lookup failed.",
+            json!({ "details": error }),
+        )
+    })?;
+    let Some(id) = profile.get("id").and_then(Value::as_str) else {
+        return Err(error_response(
+            404,
+            "minecraft_profile_unavailable",
+            "Minecraft profile was not found.",
+            json!({ "username": username }),
+        ));
+    };
+    let texture = resolve_mojang_skin_texture(id)?;
+    Ok(json!({
+      "ok": true,
+      "requestedUsername": username,
+      "name": profile.get("name").and_then(Value::as_str).unwrap_or(username),
+      "id": id,
+      "uuid": id,
+      "skinUrl": texture.get("skinUrl").cloned().unwrap_or(Value::Null),
+      "capeUrl": texture.get("capeUrl").cloned().unwrap_or(Value::Null),
+      "model": texture.get("model").cloned().unwrap_or_else(|| json!("classic")),
+      "textureTimestamp": texture.get("timestamp").cloned().unwrap_or(Value::Null),
+      "source": {
+        "profile": "api.minecraftservices.com",
+        "textures": "sessionserver.mojang.com",
+        "skin": "textures.minecraft.net"
+      }
+    }))
+}
+
+fn resolve_mojang_skin_texture(uuid: &str) -> Result<Value, ApiResponse> {
+    let compact_uuid = uuid.replace('-', "");
+    let url = format!("https://sessionserver.mojang.com/session/minecraft/profile/{compact_uuid}");
+    let profile: Value = http_get_json(&url).map_err(|error| {
+        error_response(
+            502,
+            "minecraft_profile_unavailable",
+            "Minecraft texture lookup failed.",
+            json!({ "details": error }),
+        )
+    })?;
+    let Some(encoded) = profile
+        .get("properties")
+        .and_then(Value::as_array)
+        .and_then(|items| {
+            items.iter().find_map(|item| {
+                if item.get("name").and_then(Value::as_str) == Some("textures") {
+                    item.get("value").and_then(Value::as_str)
+                } else {
+                    None
+                }
+            })
+        })
+    else {
+        return Err(error_response(
+            404,
+            "skin_texture_unavailable",
+            "Minecraft texture payload was not found.",
+            json!({ "uuid": uuid }),
+        ));
+    };
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|error| {
+            error_response(
+                502,
+                "skin_texture_unavailable",
+                "Minecraft texture payload could not be decoded.",
+                json!({ "details": error.to_string() }),
+            )
+        })?;
+    let texture_value: Value = serde_json::from_slice(&decoded).map_err(|error| {
+        error_response(
+            502,
+            "skin_texture_unavailable",
+            "Minecraft texture payload JSON could not be parsed.",
+            json!({ "details": error.to_string() }),
+        )
+    })?;
+    let skin = get_path_value(&texture_value, &["textures", "SKIN"]);
+    let skin_url = skin
+        .and_then(|value| value.get("url"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if skin_url.is_empty() {
+        return Err(error_response(
+            404,
+            "skin_texture_unavailable",
+            "Minecraft skin URL was not found.",
+            json!({ "uuid": uuid }),
+        ));
     }
+    let model = skin
+        .and_then(|value| get_path_string(value, &["metadata", "model"]))
+        .unwrap_or("classic");
+    Ok(json!({
+      "skinUrl": skin_url,
+      "capeUrl": get_path_value(&texture_value, &["textures", "CAPE", "url"]).cloned().unwrap_or(Value::Null),
+      "model": if model == "slim" { "slim" } else { "classic" },
+      "timestamp": texture_value.get("timestamp").cloned().unwrap_or(Value::Null)
+    }))
+}
+
+fn http_get_json(url: &str) -> Result<Value, String> {
+    let response = ureq::get(url)
+        .set("Accept", "application/json")
+        .set("User-Agent", "Minecraft Log Resolver/0.1")
+        .call()
+        .map_err(|error| error.to_string())?;
+    response
+        .into_json::<Value>()
+        .map_err(|error| error.to_string())
 }
 
 fn is_valid_minecraft_name(value: &str) -> bool {
@@ -3889,54 +4080,305 @@ fn rule_validate_response(body: &Value) -> ApiResponse {
     )
 }
 
-fn rules_dry_run_response(_context: &AppContext, _body: &Value) -> ApiResponse {
-    advanced_rules_not_migrated_response("rules_dry_run")
-}
+fn rules_dry_run_response(context: &AppContext, body: &Value) -> ApiResponse {
+    let mut candidate_sets = load_rule_sets(context);
+    let candidate_pack = if let Some(rule_pack) = body.get("rulePack") {
+        Some(rule_pack.clone())
+    } else if let Some(id) = body.get("rulePackId").and_then(Value::as_str) {
+        if !is_managed_id(id) {
+            return invalid_managed_rule_pack_id_response();
+        }
+        let file = user_rule_pack_path(context, id);
+        match read_json_file(&file) {
+            Ok(value) => Some(value),
+            Err(error) if is_missing_file_error(&error) => {
+                return error_response(
+                    404,
+                    "rule_pack_not_found",
+                    "User rule pack was not found.",
+                    json!({ "id": id }),
+                )
+            }
+            Err(error) => {
+                return error_response(
+                    503,
+                    "rule_pack_invalid_json",
+                    "User rule pack JSON is corrupt.",
+                    json!({ "id": id, "details": error }),
+                )
+            }
+        }
+    } else {
+        None
+    };
+    if let Some(rule_pack) = candidate_pack.as_ref() {
+        let errors = validate_rule_pack(rule_pack);
+        if !errors.is_empty() {
+            return error_response(
+                400,
+                "invalid_rule_pack",
+                "Rule pack validation failed.",
+                json!({ "errors": errors }),
+            );
+        }
+        if let Ok(text) = serde_json::to_string(rule_pack) {
+            if let Some(set) = compile_rule_set_text(&text, "<dry-run.rulePack>") {
+                candidate_sets.push(set);
+            }
+        }
+    }
 
-fn rules_audit_workflow_response(_context: &AppContext, _body: &Value) -> ApiResponse {
-    advanced_rules_not_migrated_response("rules_audit_workflow")
-}
+    let baseline_sets = load_rule_sets(context);
+    let samples = dry_run_message_samples(context);
+    let full = body.get("full").and_then(Value::as_bool).unwrap_or(false);
+    let mut baseline_matches = 0_u64;
+    let mut candidate_matches = 0_u64;
+    let mut new_matches = Vec::new();
+    let mut changed_matches = Vec::new();
 
-fn rule_draft_from_labels_response(_context: &AppContext, _body: &Value) -> ApiResponse {
-    advanced_rules_not_migrated_response("rule_draft_from_labels")
-}
+    for sample in &samples {
+        let before = match_chat_rule(&baseline_sets, sample);
+        let after = match_chat_rule(&candidate_sets, sample);
+        if before.is_some() {
+            baseline_matches += 1;
+        }
+        if after.is_some() {
+            candidate_matches += 1;
+        }
+        match (before, after) {
+            (None, Some(after)) => {
+                if new_matches.len() < if full { 50 } else { 10 } {
+                    new_matches.push(dry_run_match_sample(sample, &after));
+                }
+            }
+            (Some(before), Some(after))
+                if before.event_type != after.event_type
+                    || before.payload.get("ruleId") != after.payload.get("ruleId") =>
+            {
+                if changed_matches.len() < if full { 50 } else { 10 } {
+                    changed_matches.push(json!({
+                      "message": sample,
+                      "before": { "type": before.event_type, "ruleId": before.payload.get("ruleId").cloned().unwrap_or(Value::Null) },
+                      "after": { "type": after.event_type, "ruleId": after.payload.get("ruleId").cloned().unwrap_or(Value::Null) }
+                    }));
+                }
+            }
+            _ => {}
+        }
+    }
 
-fn advanced_rules_not_migrated_response(feature: &str) -> ApiResponse {
-    error_response(
-        501,
-        "advanced_rules_workflow_not_migrated",
-        "This advanced rule-review workflow has not been migrated to the Rust Tauri backend yet.",
+    let warnings = if body.get("targetMode").and_then(Value::as_str).is_none() {
+        json!([{ "code": "target_mode_not_declared", "severity": "info" }])
+    } else {
+        json!([])
+    };
+    json_response(
+        200,
         json!({
-          "feature": feature,
-          "runtime": "tauri-rust",
-          "safeFallback": "Use rule validation and normal refresh; this endpoint does not return placeholder success."
+          "ok": true,
+          "generatedAt": now_iso(),
+          "writes": { "report": false, "store": false, "config": false, "officialCache": false, "dryRunCache": false },
+          "summary": {
+            "samples": samples.len(),
+            "baselineMatches": baseline_matches,
+            "candidateMatches": candidate_matches,
+            "delta": { "chatMatches": candidate_matches as i64 - baseline_matches as i64 }
+          },
+          "chatMatches": {
+            "baseline": baseline_matches,
+            "candidate": candidate_matches,
+            "delta": candidate_matches as i64 - baseline_matches as i64
+          },
+          "matches": new_matches,
+          "changedMatches": changed_matches,
+          "roundChanges": { "total": changed_matches.len(), "samples": changed_matches },
+          "risks": [],
+          "promotionGate": {
+            "status": "pass",
+            "targetMode": body.get("targetMode").cloned().unwrap_or(Value::Null),
+            "failures": [],
+            "warnings": warnings,
+            "policy": "Enable candidate rules only after dry-run output is reviewed; dry-run previews do not change official statistics."
+          }
+        }),
+    )
+}
+
+fn rules_audit_workflow_response(context: &AppContext, body: &Value) -> ApiResponse {
+    let draft = build_rule_pack_draft_from_labels(body);
+    let errors = validate_rule_pack(&draft);
+    if !errors.is_empty() {
+        return error_response(
+            400,
+            "invalid_audit_workflow",
+            "Reviewed label workflow could not be completed.",
+            json!({ "ok": false, "draft": { "rulePack": draft, "errors": errors } }),
+        );
+    }
+    let dry_run = rules_dry_run_response(
+        context,
+        &json!({
+          "rulePack": draft,
+          "targetMode": body.get("targetMode").cloned().unwrap_or(Value::Null),
+          "full": body.get("full").and_then(Value::as_bool).unwrap_or(false)
+        }),
+    );
+    json_response(
+        200,
+        json!({
+          "ok": dry_run.status == 200,
+          "generatedAt": now_iso(),
+          "draft": {
+            "ok": true,
+            "rulePack": dry_run.body.get("rulePack").cloned().unwrap_or_else(|| build_rule_pack_draft_from_labels(body)),
+            "rules": build_rule_pack_draft_from_labels(body).get("rules").and_then(Value::as_array).map(Vec::len).unwrap_or(0)
+          },
+          "dryRun": dry_run.body,
+          "workflow": {
+            "status": if dry_run.status == 200 { "ready_for_review" } else { "blocked" },
+            "nextActions": [
+              "Review generated regex patterns and examples.",
+              "Save to POST /api/rule-packs/user only after dry-run risks are acceptable.",
+              "Refresh official report/store after enabling reviewed rules."
+            ]
+          }
+        }),
+    )
+}
+
+fn rule_draft_from_labels_response(_context: &AppContext, body: &Value) -> ApiResponse {
+    let rows = label_rows(body);
+    if rows.is_none() {
+        return error_response(
+            400,
+            "invalid_label_rows",
+            "labels or rows must be an array.",
+            json!({}),
+        );
+    }
+    let rule_pack = build_rule_pack_draft_from_labels(body);
+    let errors = validate_rule_pack(&rule_pack);
+    json_response(
+        if errors.is_empty() { 200 } else { 400 },
+        json!({
+          "ok": errors.is_empty(),
+          "rulePack": rule_pack,
+          "rules": rule_pack.get("rules").and_then(Value::as_array).map(Vec::len).unwrap_or(0),
+          "errors": errors,
+          "workflow": {
+            "sourceRows": rows.map(|items| items.len()).unwrap_or(0),
+            "nextActions": [
+              "Review generated regex patterns and examples.",
+              "Validate the draft with POST /api/rules/validate.",
+              "Preview impact with POST /api/rules/dry-run.",
+              "Save to POST /api/rule-packs/user only after dry-run risks are acceptable."
+            ]
+          },
+          "notes": [
+            "Drafts from labels must be reviewed and dry-run before enabling.",
+            "Only labels with win/loss/ignore decisions and message text produce draft rules."
+          ]
         }),
     )
 }
 
 fn unknown_audit_labels_response(body: &Value) -> ApiResponse {
-    let rows = body
-        .get("rows")
-        .or_else(|| body.get("labels"))
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
+    let Some(rows) = label_rows(body) else {
+        return error_response(
+            400,
+            "invalid_label_rows",
+            "labels or rows must be an array.",
+            json!({}),
+        );
+    };
+    let summary = label_review_summary(&rows);
+    let readiness = label_review_readiness(&summary);
+    if summary.get("ok").and_then(Value::as_bool) != Some(true) {
+        return error_response(
+            400,
+            "invalid_label_rows",
+            "Reviewed label rows contain invalid labels or stale round refs.",
+            json!({
+              "allowed": valid_review_labels(),
+              "summary": summary,
+              "readiness": readiness,
+              "errors": summary.get("errors").cloned().unwrap_or_else(|| json!([]))
+            }),
+        );
+    }
     json_response(
         200,
         json!({
           "ok": true,
-          "status": "ready",
-          "readyForWorkflow": true,
-          "workflowRecommended": !rows.is_empty(),
-          "checkedRoundRefs": rows.len(),
+          "status": readiness.get("status").cloned().unwrap_or_else(|| json!("empty_queue")),
+          "readyForWorkflow": readiness.get("readyForWorkflow").cloned().unwrap_or_else(|| json!(false)),
+          "workflowRecommended": readiness.get("workflowRecommended").cloned().unwrap_or_else(|| json!(false)),
+          "readiness": readiness,
+          "generatedAt": summary.get("generatedAt").cloned().unwrap_or_else(|| json!(now_iso())),
+          "policy": summary.get("policy").cloned().unwrap_or(Value::Null),
+          "writes": summary.get("writes").cloned().unwrap_or_else(unknown_audit_label_set_writes),
+          "totalRows": summary.get("totalRows").cloned().unwrap_or_else(|| json!(0)),
+          "labeledRows": summary.get("labeledRows").cloned().unwrap_or_else(|| json!(0)),
+          "unlabeledRows": summary.get("unlabeledRows").cloned().unwrap_or_else(|| json!(0)),
+          "allowedLabels": valid_review_labels(),
           "errors": [],
-          "summary": { "rows": rows.len() }
+          "byLabel": summary.get("byLabel").cloned().unwrap_or_else(|| json!({})),
+          "byCategory": summary.get("byCategory").cloned().unwrap_or_else(|| json!({})),
+          "byNextAction": summary.get("byNextAction").cloned().unwrap_or_else(|| json!({})),
+          "candidates": summary.get("candidates").cloned().unwrap_or_else(|| json!({})),
+          "samples": summary.get("samples").cloned().unwrap_or_else(|| json!([]))
         }),
     )
 }
 
 fn unknown_audit_status_response(body: &Value) -> ApiResponse {
-    unknown_audit_labels_response(body)
+    let Some(rows) = label_rows(body) else {
+        return error_response(
+            400,
+            "invalid_label_rows",
+            "labels or rows must be an array.",
+            json!({}),
+        );
+    };
+    let summary = label_review_summary(&rows);
+    let readiness = label_review_readiness(&summary);
+    json_response(
+        if summary.get("ok").and_then(Value::as_bool) == Some(true) {
+            200
+        } else {
+            400
+        },
+        json!({
+          "ok": summary.get("ok").cloned().unwrap_or_else(|| json!(false)),
+          "status": readiness.get("status").cloned().unwrap_or_else(|| json!("invalid_labels")),
+          "nextStep": readiness.get("nextStep").cloned().unwrap_or(Value::Null),
+          "blocked": readiness.get("blocked").cloned().unwrap_or_else(|| json!(false)),
+          "blockingReason": readiness.get("blockingReason").cloned().unwrap_or(Value::Null),
+          "requiresHumanInput": readiness.get("requiresHumanInput").cloned().unwrap_or_else(|| json!(false)),
+          "canDraftRules": readiness.get("canDraftRules").cloned().unwrap_or_else(|| json!(false)),
+          "canRunDryRun": readiness.get("canRunDryRun").cloned().unwrap_or_else(|| json!(false)),
+          "canArchive": readiness.get("canArchive").cloned().unwrap_or_else(|| json!(false)),
+          "nextCommand": readiness.get("nextCommand").cloned().unwrap_or(Value::Null),
+          "readyForWorkflow": readiness.get("readyForWorkflow").cloned().unwrap_or_else(|| json!(false)),
+          "workflowRecommended": readiness.get("workflowRecommended").cloned().unwrap_or_else(|| json!(false)),
+          "counts": {
+            "totalRows": summary.get("totalRows").cloned().unwrap_or_else(|| json!(0)),
+            "labeledRows": summary.get("labeledRows").cloned().unwrap_or_else(|| json!(0)),
+            "unlabeledRows": summary.get("unlabeledRows").cloned().unwrap_or_else(|| json!(0)),
+            "actionableRows": get_path_value(&summary, &["candidates", "actionableRows"]).cloned().unwrap_or_else(|| json!(0)),
+            "draftableRuleRows": get_path_value(&summary, &["candidates", "draftableRuleRows"]).cloned().unwrap_or_else(|| json!(0)),
+            "missingRuleTextRows": get_path_value(&summary, &["candidates", "missingRuleTextRows"]).cloned().unwrap_or_else(|| json!(0)),
+            "errors": summary.get("errors").and_then(Value::as_array).map(Vec::len).unwrap_or(0)
+          },
+          "byLabel": summary.get("byLabel").cloned().unwrap_or_else(|| json!({})),
+          "byCategory": summary.get("byCategory").cloned().unwrap_or_else(|| json!({})),
+          "byNextAction": summary.get("byNextAction").cloned().unwrap_or_else(|| json!({})),
+          "nextActions": readiness.get("nextActions").cloned().unwrap_or_else(|| json!([])),
+          "errors": summary.get("errors").cloned().unwrap_or_else(|| json!([])),
+          "missingRuleTextRows": summary.get("missingRuleTextRows").cloned().unwrap_or_else(|| json!([])),
+          "writes": summary.get("writes").cloned().unwrap_or_else(unknown_audit_label_set_writes)
+        }),
+    )
 }
 
 fn unknown_audit_label_sets_response(context: &AppContext, body: &Value) -> ApiResponse {
@@ -4041,6 +4483,21 @@ fn write_unknown_audit_label_set_response(
             json!({}),
         );
     };
+    let summary_value = label_review_summary(&rows);
+    let readiness = label_review_readiness(&summary_value);
+    if summary_value.get("ok").and_then(Value::as_bool) != Some(true) {
+        return error_response(
+            400,
+            "invalid_label_rows",
+            "Reviewed label rows contain invalid labels or stale round refs.",
+            json!({
+              "allowed": valid_review_labels(),
+              "summary": summary_value,
+              "readiness": readiness,
+              "errors": summary_value.get("errors").cloned().unwrap_or_else(|| json!([]))
+            }),
+        );
+    }
     let dir = unknown_audit_label_sets_dir(context);
     let _ = fs::create_dir_all(&dir);
     let file = unknown_audit_label_set_path(context, &id);
@@ -4063,9 +4520,9 @@ fn write_unknown_audit_label_set_response(
       "validateRoundRefs": body.get("validateRoundRefs").and_then(Value::as_bool).unwrap_or(true),
       "rows": rows,
       "review": {
-        "allowedReviewLabels": ["win", "loss", "ambiguous", "ignore", "needs_rule", "unknown"],
-        "readiness": "ready_for_workflow",
-        "nextStep": "run_dry_run"
+        "allowedReviewLabels": valid_review_labels(),
+        "readiness": readiness.get("status").cloned().unwrap_or_else(|| json!("empty_queue")),
+        "nextStep": readiness.get("nextStep").cloned().unwrap_or(Value::Null)
       },
       "writes": unknown_audit_label_set_writes()
     });
@@ -4103,7 +4560,9 @@ fn label_set_response_body(
     body.insert("summary".to_string(), summary);
     body.insert(
         "readiness".to_string(),
-        json!({ "status": "ready_for_workflow", "nextStep": "run_dry_run" }),
+        body.get("summary")
+            .map(label_review_readiness)
+            .unwrap_or_else(|| json!({ "status": "empty_queue", "nextStep": "export_queue" })),
     );
     body.insert("writes".to_string(), unknown_audit_label_set_writes());
     if let Some(note) = note {
@@ -4126,6 +4585,397 @@ fn label_set_id_from_path(path: &str) -> String {
 
 fn unknown_audit_label_set_writes() -> Value {
     json!({ "report": false, "store": false, "config": false, "rules": false })
+}
+
+fn label_rows(body: &Value) -> Option<Vec<Value>> {
+    body.get("rows")
+        .or_else(|| body.get("labels"))
+        .and_then(Value::as_array)
+        .cloned()
+}
+
+fn valid_review_labels() -> Value {
+    json!(["keep-unknown", "win", "loss", "ignore", "new-rule-needed"])
+}
+
+fn label_decision(row: &Value) -> Option<String> {
+    ["reviewLabel", "label", "result", "decision"]
+        .iter()
+        .find_map(|key| row.get(*key).and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn label_review_text(row: &Value) -> Option<&str> {
+    ["message", "text", "sample", "line"]
+        .iter()
+        .find_map(|key| row.get(*key).and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn label_review_summary(rows: &[Value]) -> Value {
+    let mut errors = Vec::new();
+    let mut normalized = Vec::new();
+    let mut labeled_rows = 0_usize;
+    let mut actionable_rows = 0_usize;
+    let mut draftable_rows = 0_usize;
+    let mut missing_rule_text_rows = Vec::new();
+    let valid = ["keep-unknown", "win", "loss", "ignore", "new-rule-needed"];
+
+    for (index, row) in rows.iter().enumerate() {
+        if !row.is_object() {
+            errors.push(json!({ "index": index, "field": "row", "error": "expected_object" }));
+            continue;
+        }
+        let label = label_decision(row).unwrap_or_else(|| "unlabeled".to_string());
+        if label != "unlabeled" {
+            labeled_rows += 1;
+        }
+        if label != "unlabeled" && !valid.contains(&label.as_str()) {
+            errors.push(json!({ "index": index, "field": "reviewLabel", "error": "unknown_value", "value": label }));
+        }
+        let has_text = label_review_text(row).is_some();
+        if matches!(
+            label.as_str(),
+            "win" | "loss" | "ignore" | "new-rule-needed"
+        ) {
+            actionable_rows += 1;
+        }
+        if matches!(label.as_str(), "win" | "loss" | "ignore") {
+            if has_text {
+                draftable_rows += 1;
+            } else {
+                missing_rule_text_rows.push(json!({
+                  "index": index,
+                  "label": label,
+                  "roundRef": row.get("roundRef").cloned().unwrap_or(Value::Null),
+                  "category": row.get("category").cloned().unwrap_or_else(|| json!("unknown")),
+                  "nextAction": row.get("nextAction").cloned().unwrap_or(Value::Null),
+                  "mode": row.get("gameMode").or_else(|| row.get("mode")).cloned().unwrap_or(Value::Null)
+                }));
+            }
+        }
+        normalized.push(json!({
+          "index": index,
+          "label": label,
+          "roundRef": row.get("roundRef").cloned().unwrap_or(Value::Null),
+          "category": row.get("category").cloned().unwrap_or_else(|| json!("unknown")),
+          "nextAction": row.get("nextAction").cloned().unwrap_or(Value::Null),
+          "mode": row.get("gameMode").or_else(|| row.get("mode")).cloned().unwrap_or_else(|| json!("unknown")),
+          "hasRuleText": has_text
+        }));
+    }
+    let unlabeled_rows = rows.len().saturating_sub(labeled_rows);
+    json!({
+      "ok": errors.is_empty(),
+      "generatedAt": now_iso(),
+      "policy": "Reviewed labels are audit inputs only. They do not change report statistics until a reviewed rule pack is dry-run, enabled, and refreshed.",
+      "writes": { "report": false, "store": false, "config": false, "rules": false, "labelSet": false },
+      "totalRows": rows.len(),
+      "labeledRows": labeled_rows,
+      "unlabeledRows": unlabeled_rows,
+      "allowedLabels": valid_review_labels(),
+      "checkedRoundRefs": rows.iter().filter(|row| row.get("roundRef").is_some()).count(),
+      "knownRoundRefs": null,
+      "errors": errors,
+      "byLabel": count_values(&normalized, "label"),
+      "byCategory": count_values(&normalized, "category"),
+      "byNextAction": count_values(&normalized, "nextAction"),
+      "byMode": count_values(&normalized, "mode"),
+      "candidates": {
+        "keepUnknown": normalized.iter().filter(|row| value_at(row, "label") == Some("keep-unknown")).count(),
+        "win": normalized.iter().filter(|row| value_at(row, "label") == Some("win")).count(),
+        "loss": normalized.iter().filter(|row| value_at(row, "label") == Some("loss")).count(),
+        "ignore": normalized.iter().filter(|row| value_at(row, "label") == Some("ignore")).count(),
+        "newRuleNeeded": normalized.iter().filter(|row| value_at(row, "label") == Some("new-rule-needed")).count(),
+        "actionableRows": actionable_rows,
+        "draftableRuleRows": draftable_rows,
+        "missingRuleTextRows": missing_rule_text_rows.len(),
+        "needsDryRun": draftable_rows > 0
+      },
+      "missingRuleTextRows": missing_rule_text_rows.into_iter().take(25).collect::<Vec<_>>(),
+      "samples": normalized.into_iter().take(25).collect::<Vec<_>>()
+    })
+}
+
+fn label_review_readiness(summary: &Value) -> Value {
+    let status = if summary.get("ok").and_then(Value::as_bool) != Some(true) {
+        "invalid_labels"
+    } else if value_i64(summary.get("totalRows")) == 0 {
+        "empty_queue"
+    } else if value_i64(summary.get("unlabeledRows")) > 0 {
+        "needs_labeling"
+    } else if value_i64(get_path_value(
+        summary,
+        &["candidates", "missingRuleTextRows"],
+    )) > 0
+    {
+        "needs_rule_text"
+    } else if value_i64(get_path_value(
+        summary,
+        &["candidates", "draftableRuleRows"],
+    )) > 0
+    {
+        "ready_for_workflow"
+    } else {
+        "ready_keep_unknown_only"
+    };
+    let (next_step, blocked, blocking_reason, requires_human_input, can_draft, can_dry_run, can_archive, next_command, next_actions) = match status {
+        "invalid_labels" => ("fix_labels", true, json!("invalid_labels"), true, false, false, false, json!("npm.cmd run result:audit-labels -- --input <reviewed-file>"), json!(["Fix invalid labels or stale roundRefs, then rerun label validation."])),
+        "empty_queue" => ("export_queue", true, json!("empty_queue"), false, false, false, false, json!("npm.cmd run result:audit -- --mode bedwars --prefix unknown-audit-bedwars-current"), json!(["Export an unknown-audit queue before reviewing labels."])),
+        "needs_labeling" => ("label_rows", true, json!("unlabeled_rows"), true, false, false, false, json!("npm.cmd run result:audit-status -- --input <reviewed-file>"), json!(["Fill reviewLabel/reviewNotes for unlabeled rows, then validate again."])),
+        "needs_rule_text" => ("add_rule_text", true, json!("missing_rule_text"), true, false, false, false, json!("npm.cmd run result:audit-status -- --input <reviewed-file>"), json!(["Add exact message text for win/loss/ignore rows, then validate again."])),
+        "ready_for_workflow" => ("run_audit_workflow", false, Value::Null, false, true, true, false, json!("npm.cmd run rules:audit-workflow -- --input <reviewed-file> --target-mode bedwars"), json!(["Run the combined audit workflow and inspect dry-run promotionGate before enabling any rules."])),
+        _ => ("archive_keep_unknown", false, Value::Null, false, false, false, true, json!("npm.cmd run result:audit -- --mode bedwars --prefix unknown-audit-bedwars-current"), json!(["Archive this reviewed batch as keep-unknown evidence, or continue sampling another audit queue."])),
+    };
+    json!({
+      "status": status,
+      "nextStep": next_step,
+      "blocked": blocked,
+      "blockingReason": blocking_reason,
+      "requiresHumanInput": requires_human_input,
+      "canDraftRules": can_draft,
+      "canRunDryRun": can_dry_run,
+      "canArchive": can_archive,
+      "nextCommand": next_command,
+      "readyForWorkflow": status == "ready_for_workflow" || status == "ready_keep_unknown_only",
+      "workflowRecommended": status == "ready_for_workflow",
+      "nextActions": next_actions
+    })
+}
+
+fn build_rule_pack_draft_from_labels(body: &Value) -> Value {
+    let rows = label_rows(body).unwrap_or_default();
+    let id = body
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("reviewed-label-draft");
+    let name = body
+        .get("name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Reviewed Label Draft");
+    let mut rules = Vec::new();
+    for (index, row) in rows.iter().enumerate() {
+        let Some(decision) = label_decision(row) else {
+            continue;
+        };
+        if !matches!(decision.as_str(), "win" | "loss" | "ignore") {
+            continue;
+        }
+        let Some(text) = label_review_text(row) else {
+            continue;
+        };
+        let rule_id = row
+            .get("ruleId")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("{id}_{}", index + 1));
+        let mut rule = json!({
+          "id": safe_id(&rule_id).replace('-', "_"),
+          "type": if decision == "ignore" { "ignore" } else { decision.as_str() },
+          "pattern": format!("^{}$", regex::escape(text)),
+          "examples": [text],
+          "negativeExamples": row.get("negativeExamples").cloned().unwrap_or_else(|| json!([])),
+          "confidence": row.get("confidence").and_then(Value::as_str).unwrap_or("high"),
+          "notes": row.get("notes").and_then(Value::as_str).unwrap_or("Drafted from reviewed label export; inspect before enabling.")
+        });
+        if let Some(mode) = row
+            .get("gameMode")
+            .or_else(|| row.get("mode"))
+            .and_then(Value::as_str)
+        {
+            rule["payload"] = json!({ "gameMode": mode });
+        }
+        rules.push(rule);
+    }
+    json!({
+      "id": id,
+      "name": name,
+      "description": "Draft rule pack generated from reviewed unknown/result labels.",
+      "rules": rules
+    })
+}
+
+fn dry_run_message_samples(context: &AppContext) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut samples = Vec::new();
+    for set in ["all", "ignored", "reliable"] {
+        if let Ok(rows) = read_round_rows(context, set) {
+            for row in rows {
+                if let Some(message) = row.get("message").and_then(Value::as_str) {
+                    let message = message.trim();
+                    if !message.is_empty() && seen.insert(message.to_string()) {
+                        samples.push(message.to_string());
+                    }
+                }
+            }
+        }
+    }
+    if let Ok(unmatched) = read_json_file(&context.unmatched_path) {
+        collect_messages_from_value(&unmatched, &mut seen, &mut samples);
+    }
+    samples
+}
+
+fn collect_messages_from_value(
+    value: &Value,
+    seen: &mut HashSet<String>,
+    samples: &mut Vec<String>,
+) {
+    match value {
+        Value::Array(items) => {
+            for item in items {
+                collect_messages_from_value(item, seen, samples);
+            }
+        }
+        Value::Object(object) => {
+            for key in ["message", "text", "sample", "line", "template"] {
+                if let Some(message) = object.get(key).and_then(Value::as_str) {
+                    let message = message.trim();
+                    if !message.is_empty() && seen.insert(message.to_string()) {
+                        samples.push(message.to_string());
+                    }
+                }
+            }
+            for value in object.values() {
+                collect_messages_from_value(value, seen, samples);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn dry_run_match_sample(message: &str, event: &LogEvent) -> Value {
+    json!({
+      "message": message,
+      "type": event.event_type,
+      "rulePack": event.payload.get("rulePack").cloned().unwrap_or(Value::Null),
+      "ruleId": event.payload.get("ruleId").cloned().unwrap_or(Value::Null),
+      "payload": event.payload
+    })
+}
+
+fn count_values(rows: &[Value], key: &str) -> Value {
+    let mut counts = BTreeMap::<String, u64>::new();
+    for row in rows {
+        let value = row
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("unknown");
+        *counts.entry(value.to_string()).or_insert(0) += 1;
+    }
+    json!(counts)
+}
+
+fn is_managed_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 80
+        && id.bytes().enumerate().all(|(index, ch)| {
+            let allowed =
+                ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == b'_' || ch == b'-';
+            allowed && (index > 0 || ch.is_ascii_lowercase() || ch.is_ascii_digit())
+        })
+        && safe_id(id) == id
+}
+
+fn invalid_managed_rule_pack_id_response() -> ApiResponse {
+    error_response(
+        400,
+        "invalid_rule_pack_id",
+        "Managed rule pack ids must use 1-80 lowercase ASCII letters, numbers, underscores, or hyphens, and must not need filename normalization.",
+        json!({ "pattern": "^[a-z0-9][a-z0-9_-]{0,79}$" }),
+    )
+}
+
+fn user_rule_packs_dir(context: &AppContext) -> PathBuf {
+    context.root.join("custom-rules").join("user")
+}
+
+fn user_rule_pack_path(context: &AppContext, id: &str) -> PathBuf {
+    user_rule_packs_dir(context).join(format!("{id}.json"))
+}
+
+fn rule_pack_backup_root(context: &AppContext) -> PathBuf {
+    context.data_dir.join("rule-pack-backups")
+}
+
+fn rule_pack_backup_dir(context: &AppContext, id: &str) -> PathBuf {
+    rule_pack_backup_root(context).join(id)
+}
+
+fn rule_pack_backup_path(context: &AppContext, id: &str, backup_id: &str) -> PathBuf {
+    rule_pack_backup_dir(context, id).join(format!("{backup_id}.json"))
+}
+
+fn backup_existing_user_rule_pack(context: &AppContext, id: &str, file: &Path) -> Value {
+    if !file.is_file() {
+        return Value::Null;
+    }
+    let backup_id = format!("{}-{id}", now_iso().replace([':', '.'], "-"));
+    let backup = rule_pack_backup_path(context, id, &backup_id);
+    if let Some(parent) = backup.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    match fs::copy(file, &backup) {
+        Ok(bytes) => json!({
+          "id": backup_id,
+          "rulePackId": id,
+          "filePath": path_string(&backup),
+          "createdAt": now_iso(),
+          "bytes": bytes
+        }),
+        Err(_) => Value::Null,
+    }
+}
+
+fn list_rule_pack_backups(context: &AppContext, id: Option<&str>) -> Value {
+    let root = rule_pack_backup_root(context);
+    let mut items = Vec::new();
+    let ids: Vec<String> = if let Some(id) = id {
+        vec![id.to_string()]
+    } else {
+        fs::read_dir(&root)
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .filter(|entry| entry.path().is_dir())
+                    .filter_map(|entry| entry.file_name().to_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    for rule_pack_id in ids {
+        let dir = rule_pack_backup_dir(context, &rule_pack_id);
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                    continue;
+                }
+                let metadata = path.metadata().ok();
+                items.push(json!({
+                  "id": path.file_stem().and_then(|name| name.to_str()).unwrap_or("backup"),
+                  "rulePackId": rule_pack_id,
+                  "filePath": path_string(&path),
+                  "createdAt": metadata.as_ref().and_then(|meta| meta.modified().ok()).and_then(system_time_ms).map(iso_from_ms).unwrap_or_else(now_iso),
+                  "bytes": metadata.map(|meta| meta.len()).unwrap_or(0)
+                }));
+            }
+        }
+    }
+    items.sort_by(|a, b| {
+        value_at(b, "createdAt")
+            .unwrap_or("")
+            .cmp(value_at(a, "createdAt").unwrap_or(""))
+    });
+    json!({ "ok": true, "path": path_string(&root), "total": items.len(), "items": items })
 }
 
 fn rules_doctor_response(context: &AppContext) -> ApiResponse {
@@ -4193,11 +5043,10 @@ fn user_rule_packs_response(context: &AppContext) -> ApiResponse {
 
 fn user_rule_pack_detail_response(context: &AppContext, path: &str) -> ApiResponse {
     let id = safe_id(percent_decode(path.trim_start_matches("/api/rule-packs/user/")).as_str());
-    let file = context
-        .root
-        .join("custom-rules")
-        .join("user")
-        .join(format!("{id}.json"));
+    if !is_managed_id(&id) {
+        return invalid_managed_rule_pack_id_response();
+    }
+    let file = user_rule_pack_path(context, &id);
     match read_json_file(&file) {
         Ok(rule_pack) => json_response(
             200,
@@ -4220,19 +5069,20 @@ fn user_rule_pack_save_response(context: &AppContext, body: &Value) -> ApiRespon
             json!({ "ok": false, "error": "invalid_rule_pack", "message": "Rule pack validation failed.", "errors": errors }),
         );
     }
-    let id = body
-        .get("id")
-        .and_then(Value::as_str)
-        .map(safe_id)
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| format!("user-rule-pack-{}", now_millis()));
-    let dir = context.root.join("custom-rules").join("user");
+    let Some(id) = body.get("id").and_then(Value::as_str) else {
+        return invalid_managed_rule_pack_id_response();
+    };
+    if !is_managed_id(id) {
+        return invalid_managed_rule_pack_id_response();
+    }
+    let dir = user_rule_packs_dir(context);
     let _ = fs::create_dir_all(&dir);
-    let file = dir.join(format!("{id}.json"));
+    let file = user_rule_pack_path(context, id);
+    let backup = backup_existing_user_rule_pack(context, id, &file);
     match write_json_file(&file, body) {
         Ok(()) => json_response(
             200,
-            json!({ "ok": true, "id": id, "rulePack": body, "filePath": path_string(&file) }),
+            json!({ "ok": true, "id": id, "rulePack": body, "filePath": path_string(&file), "backup": backup }),
         ),
         Err(error) => error_response(
             500,
@@ -4245,24 +5095,56 @@ fn user_rule_pack_save_response(context: &AppContext, body: &Value) -> ApiRespon
 
 fn user_rule_pack_delete_response(context: &AppContext, path: &str) -> ApiResponse {
     let id = safe_id(percent_decode(path.trim_start_matches("/api/rule-packs/user/")).as_str());
-    let file = context
-        .root
-        .join("custom-rules")
-        .join("user")
-        .join(format!("{id}.json"));
-    let _ = fs::remove_file(&file);
-    json_response(200, json!({ "ok": true, "id": id, "deleted": true }))
+    if !is_managed_id(&id) {
+        return invalid_managed_rule_pack_id_response();
+    }
+    let file = user_rule_pack_path(context, &id);
+    match fs::remove_file(&file) {
+        Ok(()) => json_response(
+            200,
+            json!({ "ok": true, "id": id, "filePath": path_string(&file), "deleted": true }),
+        ),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => error_response(
+            404,
+            "rule_pack_not_found",
+            "User rule pack was not found.",
+            json!({ "id": id }),
+        ),
+        Err(error) => error_response(
+            500,
+            "rule_pack_delete_failed",
+            "Could not delete user rule pack.",
+            json!({ "details": error.to_string() }),
+        ),
+    }
 }
 
 fn user_rule_pack_enable_response(context: &AppContext, body: &Value) -> ApiResponse {
-    let id = body
-        .get("id")
-        .and_then(Value::as_str)
-        .map(safe_id)
-        .unwrap_or_default();
-    let enabled = body.get("enabled").and_then(Value::as_bool).unwrap_or(true);
+    let Some(id) = body.get("id").and_then(Value::as_str) else {
+        return invalid_managed_rule_pack_id_response();
+    };
+    if !is_managed_id(id) {
+        return invalid_managed_rule_pack_id_response();
+    }
+    let Some(enabled) = body.get("enabled").and_then(Value::as_bool) else {
+        return error_response(
+            400,
+            "invalid_rule_pack_enabled",
+            "enabled must be true or false.",
+            json!({}),
+        );
+    };
+    let file = user_rule_pack_path(context, id);
+    if !file.is_file() {
+        return error_response(
+            404,
+            "rule_pack_not_found",
+            "User rule pack was not found.",
+            json!({ "id": id }),
+        );
+    }
     let entry = format!("custom-rules/user/{id}.json");
-    let mut local_config = read_json_file(&context.local_config_path).unwrap_or_else(|_| json!({}));
+    let local_config = read_json_file(&context.local_config_path).unwrap_or_else(|_| json!({}));
     let mut custom_rules = local_config
         .get("customRules")
         .and_then(Value::as_array)
@@ -4277,11 +5159,20 @@ fn user_rule_pack_enable_response(context: &AppContext, body: &Value) -> ApiResp
     if enabled {
         custom_rules.push(json!(entry));
     }
-    local_config["customRules"] = json!(custom_rules);
-    match write_json_file(&context.local_config_path, &local_config) {
+    let patch = json!({ "customRules": custom_rules });
+    let (sanitized, errors) = sanitize_local_config_patch(context, &patch);
+    if !errors.is_empty() {
+        return error_response(
+            400,
+            "invalid_config",
+            "Local config contains unsupported or invalid values.",
+            json!({ "errors": errors }),
+        );
+    }
+    match write_json_file(&context.local_config_path, &sanitized) {
         Ok(()) => json_response(
             200,
-            json!({ "ok": true, "id": id, "enabled": enabled, "customRules": local_config["customRules"] }),
+            json!({ "ok": true, "id": id, "enabled": enabled, "customRules": sanitized["customRules"] }),
         ),
         Err(error) => error_response(
             500,
@@ -4292,20 +5183,87 @@ fn user_rule_pack_enable_response(context: &AppContext, body: &Value) -> ApiResp
     }
 }
 
-fn user_rule_pack_backups_response(_context: &AppContext, body: &Value) -> ApiResponse {
+fn user_rule_pack_backups_response(context: &AppContext, body: &Value) -> ApiResponse {
+    if let Some(id) = body.get("id").and_then(Value::as_str) {
+        if !is_managed_id(id) {
+            return invalid_managed_rule_pack_id_response();
+        }
+    }
     json_response(
         200,
-        json!({ "ok": true, "id": body.get("id").cloned().unwrap_or(Value::Null), "total": 0, "items": [] }),
+        list_rule_pack_backups(context, body.get("id").and_then(Value::as_str)),
     )
 }
 
-fn user_rule_pack_restore_response(_context: &AppContext, body: &Value) -> ApiResponse {
-    error_response(
-        404,
-        "rule_pack_backup_not_found",
-        "No user rule pack backup was found.",
-        json!({ "id": body.get("id").cloned().unwrap_or(Value::Null), "backupId": body.get("backupId").cloned().unwrap_or(Value::Null) }),
-    )
+fn user_rule_pack_restore_response(context: &AppContext, body: &Value) -> ApiResponse {
+    let Some(id) = body.get("id").and_then(Value::as_str) else {
+        return invalid_managed_rule_pack_id_response();
+    };
+    if !is_managed_id(id) {
+        return invalid_managed_rule_pack_id_response();
+    }
+    let Some(backup_id) = body
+        .get("backupId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return error_response(
+            400,
+            "invalid_rule_pack_backup",
+            "backupId is required.",
+            json!({}),
+        );
+    };
+    let backup = rule_pack_backup_path(context, id, backup_id);
+    let backup_value = match read_json_file(&backup) {
+        Ok(value) => value,
+        Err(error) if is_missing_file_error(&error) => {
+            return error_response(
+                404,
+                "rule_pack_backup_not_found",
+                "Rule pack backup was not found.",
+                json!({ "id": id, "backupId": backup_id }),
+            )
+        }
+        Err(error) => {
+            return error_response(
+                400,
+                "invalid_rule_pack_backup",
+                "Rule pack backup could not be restored.",
+                json!({ "errors": [error] }),
+            )
+        }
+    };
+    let errors = validate_rule_pack(&backup_value);
+    if !errors.is_empty() {
+        return error_response(
+            400,
+            "invalid_rule_pack_backup",
+            "Rule pack backup could not be restored.",
+            json!({ "errors": errors }),
+        );
+    }
+    let target = user_rule_pack_path(context, id);
+    let current_backup = backup_existing_user_rule_pack(context, id, &target);
+    match write_json_file(&target, &backup_value) {
+        Ok(()) => json_response(
+            200,
+            json!({
+              "ok": true,
+              "id": id,
+              "restoredFrom": { "id": backup_id, "filePath": path_string(&backup) },
+              "currentBackup": current_backup,
+              "filePath": path_string(&target)
+            }),
+        ),
+        Err(error) => error_response(
+            500,
+            "rule_pack_restore_failed",
+            "Rule pack backup could not be restored.",
+            json!({ "details": error }),
+        ),
+    }
 }
 
 fn read_only_rule_packs_response(context: &AppContext) -> ApiResponse {
@@ -5936,14 +6894,22 @@ mod tests {
             ApiRequest {
                 method: "POST".to_string(),
                 url: "/api/rules/dry-run".to_string(),
-                body: json!({ "rules": [] }),
+                body: json!({
+                  "rulePack": {
+                    "id": "test-dry-run",
+                    "name": "Test dry run",
+                    "rules": [{
+                      "id": "test_victory",
+                      "type": "win",
+                      "pattern": "^VICTORY!$"
+                    }]
+                  },
+                  "targetMode": "bedwars"
+                }),
             },
         );
-        assert_eq!(dry_run_rules.status, 501);
-        assert_eq!(
-            dry_run_rules.body["error"],
-            json!("advanced_rules_workflow_not_migrated")
-        );
+        assert_eq!(dry_run_rules.status, 200);
+        assert_eq!(dry_run_rules.body["promotionGate"]["status"], json!("pass"));
 
         let _ = fs::remove_dir_all(root);
     }
